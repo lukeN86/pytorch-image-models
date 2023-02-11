@@ -347,7 +347,7 @@ group.add_argument('--use-multi-epochs-loader', action='store_true', default=Fal
                    help='use the multi-epochs-loader to save time at the beginning of every epoch')
 group.add_argument('--log-wandb', action='store_true', default=False,
                    help='log training and validation metrics to wandb')
-group.add_argument('--wandb_project', default='symmetrysearch', type=str)
+
 
 
 
@@ -717,7 +717,7 @@ def main():
 
     if utils.is_primary(args) and args.log_wandb:
         if has_wandb:
-            wandb.init(project=args.wandb_project, config=args)
+            wandb.init(project='symmetrysearch', config=args)
         else:
             _logger.warning(
                 "You've requested to log metrics to wandb but package not found. "
