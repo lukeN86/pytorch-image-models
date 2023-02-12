@@ -23,6 +23,7 @@ from contextlib import suppress
 from datetime import datetime
 from functools import partial
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torchvision.utils
@@ -97,8 +98,8 @@ group.add_argument('--dataset-download', action='store_true', default=False,
                    help='Allow download of dataset for torch/ and tfds/ datasets that support it.')
 group.add_argument('--class-map', default='', type=str, metavar='FILENAME',
                    help='path to class to idx mapping file (default: "")')
-parser.add_argument('--partial_data_ratio', default=1, type=int,
-                    help='Only train using 1/partial_data_ratio fraction of the training data')
+parser.add_argument('--partial_data_ratio', default=1., type=float,
+                    help='Only train using partial_data_ratio fraction of the training data (default 1. = all data)')
 
 # Model parameters
 group = parser.add_argument_group('Model parameters')
@@ -576,8 +577,8 @@ def main():
         repeats=args.epoch_repeats,
     )
 
-    if args.partial_data_ratio > 1:
-        _logger.info(f'Using 1/{args.partial_data_ratio} of the training data.')
+    if args.partial_data_ratio < 1.:
+        _logger.info(f'Using {args.partial_data_ratio}% of the training data.')
         dataset_train = PartialDataset(dataset_train, args.partial_data_ratio)
 
     dataset_eval = create_dataset(
