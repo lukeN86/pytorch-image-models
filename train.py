@@ -36,6 +36,7 @@ from timm.loss import JsdCrossEntropy, SoftTargetCrossEntropy, BinaryCrossEntrop
 from timm.models import create_model, safe_model_name, resume_checkpoint, load_checkpoint, model_parameters
 from timm.optim import create_optimizer_v2, optimizer_kwargs
 from timm.scheduler import create_scheduler_v2, scheduler_kwargs
+from timm.data.partial_dataset import PartialDataset
 from timm.utils import ApexScaler, NativeScaler
 
 try:
@@ -96,6 +97,8 @@ group.add_argument('--dataset-download', action='store_true', default=False,
                    help='Allow download of dataset for torch/ and tfds/ datasets that support it.')
 group.add_argument('--class-map', default='', type=str, metavar='FILENAME',
                    help='path to class to idx mapping file (default: "")')
+parser.add_argument('--partial_data_ratio', default=1, type=int,
+                    help='Only train using 1/partial_data_ratio fraction of the training data')
 
 # Model parameters
 group = parser.add_argument_group('Model parameters')
@@ -573,6 +576,10 @@ def main():
         repeats=args.epoch_repeats,
     )
 
+    if args.partial_data_ratio > 1:
+        _logger.info(f'Using 1/{args.partial_data_ratio} of the training data.')
+        dataset_train = PartialDataset(dataset_train, args.partial_data_ratio)
+
     dataset_eval = create_dataset(
         args.dataset,
         root=args.data_dir,
@@ -720,7 +727,7 @@ def main():
 
             wandb.init(project='symmetrysearch', config=args)
 
-            # Log SLURM variables too 
+            # Log SLURM variables too
             for key in os.environ:
                 if key.startswith('SLURM'):
                     wandb.config[key] = os.getenv(key)
