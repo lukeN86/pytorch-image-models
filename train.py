@@ -717,7 +717,12 @@ def main():
 
     if utils.is_primary(args) and args.log_wandb:
         if has_wandb:
+            for key in os.environ:
+                if key.startswith('SLURM'):
+                    wandb.config[key] = os.getenv(key)
+
             wandb.init(project='symmetrysearch', config=args)
+
         else:
             _logger.warning(
                 "You've requested to log metrics to wandb but package not found. "
