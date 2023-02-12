@@ -717,8 +717,10 @@ def main():
 
     if utils.is_primary(args) and args.log_wandb:
         if has_wandb:
+
             wandb.init(project='symmetrysearch', config=args)
 
+            # Log SLURM variables too
             for key in os.environ:
                 if key.startswith('SLURM'):
                     wandb.config[key] = os.getenv(key)
