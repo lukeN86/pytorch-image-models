@@ -3,6 +3,8 @@ from typing import Any, Dict, Optional, Union
 from urllib.parse import urlsplit
 
 from timm.layers import set_layer_config
+
+from models.model_factory import create_custom_model
 from ._pretrained import PretrainedCfg, split_model_name_tag
 from ._helpers import load_checkpoint
 from ._hub import load_model_config_from_hf
@@ -73,22 +75,26 @@ def create_model(
     # non-supporting models don't break and default args remain in effect.
     kwargs = {k: v for k, v in kwargs.items() if v is not None}
 
-    model_source, model_name = parse_model_name(model_name)
-    if model_source == 'hf-hub':
-        assert not pretrained_cfg, 'pretrained_cfg should not be set when sourcing model from Hugging Face Hub.'
-        # For model names specified in the form `hf-hub:path/architecture_name@revision`,
-        # load model weights + pretrained_cfg from Hugging Face hub.
-        pretrained_cfg, model_name = load_model_config_from_hf(model_name)
+    if model_name == 'archsearch':  # Custom model (architecture search support)
+        create_fn = create_custom_model
     else:
-        model_name, pretrained_tag = split_model_name_tag(model_name)
-        if not pretrained_cfg:
-            # a valid pretrained_cfg argument takes priority over tag in model name
-            pretrained_cfg = pretrained_tag
+        model_source, model_name = parse_model_name(model_name)
+        if model_source == 'hf-hub':
+            assert not pretrained_cfg, 'pretrained_cfg should not be set when sourcing model from Hugging Face Hub.'
+            # For model names specified in the form `hf-hub:path/architecture_name@revision`,
+            # load model weights + pretrained_cfg from Hugging Face hub.
+            pretrained_cfg, model_name = load_model_config_from_hf(model_name)
+        else:
+            model_name, pretrained_tag = split_model_name_tag(model_name)
+            if not pretrained_cfg:
+                # a valid pretrained_cfg argument takes priority over tag in model name
+                pretrained_cfg = pretrained_tag
 
-    if not is_model(model_name):
-        raise RuntimeError('Unknown model (%s)' % model_name)
+        if not is_model(model_name):
+            raise RuntimeError('Unknown model (%s)' % model_name)
 
-    create_fn = model_entrypoint(model_name)
+        create_fn = model_entrypoint(model_name)
+
     with set_layer_config(scriptable=scriptable, exportable=exportable, no_jit=no_jit):
         model = create_fn(
             pretrained=pretrained,

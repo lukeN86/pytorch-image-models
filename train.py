@@ -144,6 +144,8 @@ group.add_argument('--grad-checkpointing', action='store_true', default=False,
                    help='Enable gradient checkpointing through model blocks/stages')
 group.add_argument('--fast-norm', default=False, action='store_true',
                    help='enable experimental fast-norm')
+group.add_argument('--arch-code', default=None, type=str, metavar='ARCHCODE',
+                   help='Architecture code')
 group.add_argument('--model-kwargs', nargs='*', default={}, action=utils.ParseKwargs)
 
 scripting_group = group.add_mutually_exclusive_group()
@@ -431,6 +433,7 @@ def main():
         bn_eps=args.bn_eps,
         scriptable=args.torchscript,
         checkpoint_path=args.initial_checkpoint,
+        arch_code = args.arch_code,
         **args.model_kwargs,
     )
     if args.num_classes is None:
@@ -442,7 +445,7 @@ def main():
 
     if utils.is_primary(args):
         _logger.info(
-            f'Model {safe_model_name(args.model)} created, param count:{sum([m.numel() for m in model.parameters()])}')
+            f'Model {safe_model_name(args.model)} {args.arch_code or ""} created, param count:{sum([m.numel() for m in model.parameters()])}')
 
     data_config = resolve_data_config(vars(args), model=model, verbose=utils.is_primary(args))
 
