@@ -4,7 +4,6 @@ from urllib.parse import urlsplit
 
 from timm.layers import set_layer_config
 
-from models.model_factory import create_custom_model
 from ._pretrained import PretrainedCfg, split_model_name_tag
 from ._helpers import load_checkpoint
 from ._hub import load_model_config_from_hf
