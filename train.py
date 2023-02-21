@@ -731,9 +731,9 @@ def main():
 
             wandb.init(project='symmetrysearch', config=args)
 
-            # Log SLURM variables too
+            # Log SLURM & PBS variables too
             for key in os.environ:
-                if key.startswith('SLURM'):
+                if key.startswith('SLURM') or key.startswith('PBS'):
                     wandb.config[key] = os.getenv(key)
 
         else:
