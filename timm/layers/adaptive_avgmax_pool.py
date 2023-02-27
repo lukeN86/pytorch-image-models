@@ -91,6 +91,8 @@ class SelectAdaptivePool2d(nn.Module):
             self.flatten = nn.Identity()
         elif pool_type == 'avg':
             self.pool = nn.AdaptiveAvgPool2d(output_size)
+        elif pool_type == 'avg1d':
+            self.pool = nn.AdaptiveAvgPool1d(output_size)
         elif pool_type == 'avg3d':
             self.pool = nn.AdaptiveAvgPool3d(output_size)
         elif pool_type == 'avgmax':
