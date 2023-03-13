@@ -735,10 +735,10 @@ def main():
             else:
                 wandb.init(project='symmetrysearch', config=args)
 
-            # Log SLURM & PBS variables too
-            for key in os.environ:
-                if key.startswith('SLURM') or key.startswith('PBS'):
-                    wandb.config[key] = os.getenv(key)
+                # Log SLURM & PBS variables too
+                for key in os.environ:
+                    if key.startswith('SLURM') or key.startswith('PBS'):
+                        wandb.config[key] = os.getenv(key)
 
         else:
             _logger.warning(
