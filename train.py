@@ -354,6 +354,11 @@ group.add_argument('--use-multi-epochs-loader', action='store_true', default=Fal
 group.add_argument('--log-wandb', action='store_true', default=False,
                    help='log training and validation metrics to wandb')
 group.add_argument('--wandb-runid', default='', type=str,  help='WandDB run_id to resume the run')
+group.add_argument('--find-unused-parameters', action='store_true', default=False,
+                   help='Find unused parameters in DDP')
+
+
+
 
 
 
@@ -563,7 +568,7 @@ def main():
         else:
             if utils.is_primary(args):
                 _logger.info("Using native Torch DistributedDataParallel.")
-            model = NativeDDP(model, device_ids=[device], broadcast_buffers=not args.no_ddp_bb, find_unused_parameters=True)
+            model = NativeDDP(model, device_ids=[device], broadcast_buffers=not args.no_ddp_bb, find_unused_parameters=args.find_unused_parameters)
         # NOTE: EMA model does not need to be wrapped by DDP
 
     # create the train and eval datasets
