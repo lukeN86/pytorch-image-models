@@ -9,7 +9,7 @@ import functools
 
 import torch.nn as nn
 
-from .norm import GroupNorm, GroupNorm1, LayerNorm, LayerNorm2d
+from .norm import GroupNorm, GroupNorm1, LayerNorm, LayerNorm2d, BatchNorm2dCl
 
 _NORM_MAP = dict(
     batchnorm=nn.BatchNorm2d,
@@ -19,6 +19,7 @@ _NORM_MAP = dict(
     groupnorm1=GroupNorm1,
     layernorm=LayerNorm,
     layernorm2d=LayerNorm2d,
+    batchnorm2dcl=BatchNorm2dCl,
 )
 _NORM_TYPES = {m for n, m in _NORM_MAP.items()}
 
