@@ -4,6 +4,7 @@ Norm layer definitions that support fast norm and consistent channel arg order (
 
 Hacked together by / Copyright 2022 Ross Wightman
 """
+from typing import List
 
 import torch
 import torch.nn as nn
@@ -109,7 +110,7 @@ class BatchNorm2dCl(nn.BatchNorm2d):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.permute(0, 3, 1, 2)
-        super().forward(x)
+        x = super().forward(x)
         x = x.permute(0, 2, 3, 1)
         return x
 
