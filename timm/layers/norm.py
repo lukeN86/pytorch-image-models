@@ -103,14 +103,15 @@ class LayerNorm2d(nn.LayerNorm):
 #         return output_y
 #
 
-class BatchNorm2dCl(nn.BatchNorm2d):
+class BatchNorm2dCl(nn.Module):
     """ BatchNorm for channels of '2D' spatial NHWC tensors """
-    def __init__(self, num_channels, eps=1e-6, affine=True):
-        super().__init__(num_channels, eps=eps, affine=affine)
+    def __init__(self, num_channels, eps=1e-5, affine=True):
+        super().__init__()
+        self.bn = nn.BatchNorm2d(num_channels, eps, affine)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.permute(0, 3, 1, 2)
-        x = super().forward(x)
+        x = self.bn(x)
         x = x.permute(0, 2, 3, 1)
         return x
 
