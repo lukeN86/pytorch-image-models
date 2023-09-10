@@ -105,7 +105,7 @@ class LayerNorm2d(nn.LayerNorm):
 
 class BatchNorm2dCl(nn.Module):
     """ BatchNorm for channels of '2D' spatial NHWC tensors """
-    def __init__(self, num_channels, eps=1e-6, affine=True):
+    def __init__(self, num_channels, eps=1e-4, affine=True):
         super().__init__()
         self.bn = nn.BatchNorm2d(num_channels, eps, affine)
 
