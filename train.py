@@ -471,6 +471,8 @@ def main():
     if args.channels_last:
         model.to(memory_format=torch.channels_last)
 
+    print(model)
+
     # setup synchronized BatchNorm for distributed training
     if args.distributed and args.sync_bn:
         args.dist_bn = ''  # disable dist_bn when sync BN active
