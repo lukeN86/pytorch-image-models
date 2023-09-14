@@ -73,35 +73,71 @@ class LayerNorm2d(nn.LayerNorm):
         return x
 
 
-# class LayerNormAcrossScales(nn.LayerNorm):
-#     """ LayerNorm across scales
-#     """
-#     def __init__(self, num_channels, eps=1e-6, affine=True):
-#         super().__init__(num_channels, eps=eps, elementwise_affine=affine)
+class LayerNormAcrossScales(nn.LayerNorm):
+    """ LayerNorm across scales
+    """
+    def __init__(self, num_channels, eps=1e-6, affine=True):
+        super().__init__(num_channels, eps=eps, elementwise_affine=affine)
+        self.normalize_across_scales = True
+
+    def forward(self, multi_x: List[torch.Tensor]) -> List[torch.Tensor]:
+
+
+        B = multi_x[0].size(0)
+        multi_y = []
+        for x in multi_x:
+            multi_y.append(x.view(B, -1, self.normalized_shape[0]))
+
+
+        y = torch.concat(multi_y, dim=1)
+
+
+        y = F.layer_norm(y, self.normalized_shape, self.weight, self.bias, self.eps)
+
+
+        multi_y = torch.split(y, [t.size(1) for t in multi_y], dim=1)
+
+        output_y = []
+        for x, y in zip(multi_x, multi_y):
+            output_y.append(y.view(B, x.size(1), x.size(2), x.size(3)))
+
+        return output_y
 #
-#     def forward(self, multi_x: List[torch.Tensor]) -> List[torch.Tensor]:
-#
-#
-#         B = multi_x[0].size(0)
-#         multi_y = []
-#         for x in multi_x:
-#             multi_y.append(x.view(B, -1, self.normalized_shape[0]))
-#
-#
-#         y = torch.concat(multi_y, dim=1)
-#
-#
-#         y = F.layer_norm(y, self.normalized_shape, self.weight, self.bias, self.eps)
-#
-#
-#         multi_y = torch.split(y, [t.size(1) for t in multi_y], dim=1)
-#
-#         output_y = []
-#         for x, y in zip(multi_x, multi_y):
-#             output_y.append(y.view(B, x.size(1), x.size(2), x.size(3)))
-#
-#         return output_y
-#
+
+
+class BatchNormAcrossScales(nn.Module):
+    """ BatchNorm across scales
+    """
+    def __init__(self, num_channels, eps=1e-6, affine=True):
+        super().__init__()
+        self.num_channels = num_channels
+        self.bn = nn.BatchNorm1d(num_channels, eps=eps, affine=affine)
+        self.normalize_across_scales = True
+
+    def forward(self, multi_x: List[torch.Tensor]) -> List[torch.Tensor]:
+
+
+        B = multi_x[0].size(0)
+        multi_y = []
+        for x in multi_x:
+            multi_y.append(x.view(B, -1, self.num_channels))
+
+
+        y = torch.concat(multi_y, dim=1)
+
+        y = y.permute(0, 2, 1)
+
+        self.bn(y)
+
+        y = y.permute(0, 2, 1)
+
+        multi_y = torch.split(y, [t.size(1) for t in multi_y], dim=1)
+
+        output_y = []
+        for x, y in zip(multi_x, multi_y):
+            output_y.append(y.view(B, x.size(1), x.size(2), x.size(3)))
+
+        return output_y
 
 class BatchNorm2dCl(nn.Module):
     """ BatchNorm for channels of '2D' spatial NHWC tensors """
