@@ -105,29 +105,91 @@ class LayerNormAcrossScales(nn.LayerNorm):
 #
 
 
-class BatchNormAcrossScales(nn.Module):
-    """ BatchNorm across scales
+
+
+class BatchNormAcrossScales(nn.BatchNorm1d):
+    """BatchNorm across scales
     """
-    def __init__(self, num_channels, eps=1e-6, affine=True):
-        super().__init__()
-        self.num_channels = num_channels
-        self.bn = nn.BatchNorm1d(num_channels, eps=eps, affine=affine)
+    def __init__(
+            self,
+            num_features,
+            eps=1e-5,
+            momentum=0.1,
+            affine=True,
+            track_running_stats=True,
+            device=None,
+            dtype=None
+    ):
+        try:
+            factory_kwargs = {'device': device, 'dtype': dtype}
+            super(BatchNormAcrossScales, self).__init__(
+                num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats,
+                **factory_kwargs
+            )
+        except TypeError:
+            # NOTE for backwards compat with old PyTorch w/o factory device/dtype support
+            super(BatchNormAcrossScales, self).__init__(
+                num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats)
+
         self.normalize_across_scales = True
 
-    def forward(self, multi_x: List[torch.Tensor]) -> List[torch.Tensor]:
 
+    def forward(self, multi_x: List[torch.Tensor]) -> List[torch.Tensor]:
+        # cut & paste of torch.nn.BatchNorm2d.forward impl to avoid issues with torchscript and tracing
+        torch._assert(multi_x[0].ndim == 4, f'expected 4D input (got {multi_x[0].ndim}D input)')
+
+        # exponential_average_factor is set to self.momentum
+        # (when it is available) only so that it gets updated
+        # in ONNX graph when this node is exported to ONNX.
+        if self.momentum is None:
+            exponential_average_factor = 0.0
+        else:
+            exponential_average_factor = self.momentum
+
+        if self.training and self.track_running_stats:
+            # TODO: if statement only here to tell the jit to skip emitting this when it is None
+            if self.num_batches_tracked is not None:  # type: ignore[has-type]
+                self.num_batches_tracked.add_(1)  # type: ignore[has-type]
+                if self.momentum is None:  # use cumulative moving average
+                    exponential_average_factor = 1.0 / float(self.num_batches_tracked)
+                else:  # use exponential moving average
+                    exponential_average_factor = self.momentum
+
+        r"""
+        Decide whether the mini-batch stats should be used for normalization rather than the buffers.
+        Mini-batch stats are used in training mode, and in eval mode when buffers are None.
+        """
+        if self.training:
+            bn_training = True
+        else:
+            bn_training = (self.running_mean is None) and (self.running_var is None)
+
+        r"""
+        Buffers are only updated if they are to be tracked and we are in training mode. Thus they only need to be
+        passed when the update should occur (i.e. in training mode when they are tracked), or when buffer stats are
+        used for normalization (i.e. in eval mode when buffers are not None).
+        """
 
         B = multi_x[0].size(0)
         multi_y = []
         for x in multi_x:
-            multi_y.append(x.view(B, -1, self.num_channels))
-
+            multi_y.append(x.view(B, -1, self.num_features))
 
         y = torch.concat(multi_y, dim=1)
 
         y = y.permute(0, 2, 1)
 
-        self.bn(y)
+        y = F.batch_norm(
+            y,
+            # If buffers are not to be tracked, ensure that they won't be updated
+            self.running_mean if not self.training or self.track_running_stats else None,
+            self.running_var if not self.training or self.track_running_stats else None,
+            self.weight,
+            self.bias,
+            bn_training,
+            exponential_average_factor,
+            self.eps,
+        )
 
         y = y.permute(0, 2, 1)
 
@@ -138,6 +200,43 @@ class BatchNormAcrossScales(nn.Module):
             output_y.append(y.view(B, x.size(1), x.size(2), x.size(3)))
 
         return output_y
+
+
+
+#
+# class BatchNormAcrossScales(nn.Module):
+#     """ BatchNorm across scales
+#     """
+#     def __init__(self, num_channels, eps=1e-6, affine=True):
+#         super().__init__()
+#         self.num_channels = num_channels
+#         self.bn = nn.BatchNorm1d(num_channels, eps=eps, affine=affine)
+#         self.normalize_across_scales = True
+#
+#     def forward(self, multi_x: List[torch.Tensor]) -> List[torch.Tensor]:
+#
+#
+#         B = multi_x[0].size(0)
+#         multi_y = []
+#         for x in multi_x:
+#             multi_y.append(x.view(B, -1, self.num_channels))
+#
+#
+#         y = torch.concat(multi_y, dim=1)
+#
+#         y = y.permute(0, 2, 1)
+#
+#         self.bn(y)
+#
+#         y = y.permute(0, 2, 1)
+#
+#         multi_y = torch.split(y, [t.size(1) for t in multi_y], dim=1)
+#
+#         output_y = []
+#         for x, y in zip(multi_x, multi_y):
+#             output_y.append(y.view(B, x.size(1), x.size(2), x.size(3)))
+#
+#         return output_y
 
 class BatchNorm2dCl(nn.Module):
     """ BatchNorm for channels of '2D' spatial NHWC tensors """
