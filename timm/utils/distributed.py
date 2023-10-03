@@ -30,6 +30,7 @@ def distribute_bn(model, world_size, reduce=False):
                 # average bn stats across whole group
                 torch.distributed.all_reduce(bn_buf, op=dist.ReduceOp.SUM)
                 bn_buf /= float(world_size)
+                print(bn_name, bn_buf, world_size)
             else:
                 # broadcast bn stats from rank 0 to whole group
                 torch.distributed.broadcast(bn_buf, 0)
