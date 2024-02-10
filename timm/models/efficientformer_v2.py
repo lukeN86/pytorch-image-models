@@ -23,11 +23,10 @@ import torch.nn as nn
 
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.layers import create_conv2d, create_norm_layer, get_act_layer, get_norm_layer, ConvNormAct
-from timm.layers import DropPath, trunc_normal_, to_2tuple, to_ntuple
+from timm.layers import DropPath, trunc_normal_, to_2tuple, to_ntuple, ndgrid
 from ._builder import build_model_with_cfg
 from ._manipulate import checkpoint_seq
-from ._pretrained import generate_default_cfgs
-from ._registry import register_model
+from ._registry import generate_default_cfgs, register_model
 
 
 EfficientFormer_width = {
@@ -130,7 +129,7 @@ class Attention2d(torch.nn.Module):
         self.act = act_layer()
         self.proj = ConvNorm(self.dh, dim, 1)
 
-        pos = torch.stack(torch.meshgrid(torch.arange(self.resolution[0]), torch.arange(self.resolution[1]))).flatten(1)
+        pos = torch.stack(ndgrid(torch.arange(self.resolution[0]), torch.arange(self.resolution[1]))).flatten(1)
         rel_pos = (pos[..., :, None] - pos[..., None, :]).abs()
         rel_pos = (rel_pos[0] * self.resolution[1]) + rel_pos[1]
         self.attention_biases = torch.nn.Parameter(torch.zeros(num_heads, self.N))
@@ -232,12 +231,11 @@ class Attention2dDownsample(torch.nn.Module):
         self.proj = ConvNorm(self.dh, self.out_dim, 1)
 
         self.attention_biases = nn.Parameter(torch.zeros(num_heads, self.N))
-        k_pos = torch.stack(torch.meshgrid(torch.arange(
-            self.resolution[1]),
-            torch.arange(self.resolution[1]))).flatten(1)
-        q_pos = torch.stack(torch.meshgrid(
+        k_pos = torch.stack(ndgrid(torch.arange(self.resolution[0]), torch.arange(self.resolution[1]))).flatten(1)
+        q_pos = torch.stack(ndgrid(
             torch.arange(0, self.resolution[0], step=2),
-            torch.arange(0, self.resolution[1], step=2))).flatten(1)
+            torch.arange(0, self.resolution[1], step=2)
+        )).flatten(1)
         rel_pos = (q_pos[..., :, None] - k_pos[..., None, :]).abs()
         rel_pos = (rel_pos[0] * self.resolution[1]) + rel_pos[1]
         self.register_buffer('attention_bias_idxs', rel_pos, persistent=False)
@@ -343,7 +341,8 @@ class ConvMlpWithNorm(nn.Module):
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
         self.fc1 = ConvNormAct(
-            in_features, hidden_features, 1, bias=True, norm_layer=norm_layer, act_layer=act_layer)
+            in_features, hidden_features, 1,
+            bias=True, norm_layer=norm_layer, act_layer=act_layer)
         if mid_conv:
             self.mid = ConvNormAct(
                 hidden_features, hidden_features, 3,
@@ -381,7 +380,7 @@ class EfficientFormerV2Block(nn.Module):
             mlp_ratio=4.,
             act_layer=nn.GELU,
             norm_layer=nn.BatchNorm2d,
-            drop=0.,
+            proj_drop=0.,
             drop_path=0.,
             layer_scale_init_value=1e-5,
             resolution=7,
@@ -410,7 +409,7 @@ class EfficientFormerV2Block(nn.Module):
             hidden_features=int(dim * mlp_ratio),
             act_layer=act_layer,
             norm_layer=norm_layer,
-            drop=drop,
+            drop=proj_drop,
             mid_conv=True,
         )
         self.ls2 = LayerScale2d(
@@ -452,7 +451,7 @@ class EfficientFormerV2Stage(nn.Module):
             block_use_attn=False,
             num_vit=1,
             mlp_ratio=4.,
-            drop=.0,
+            proj_drop=.0,
             drop_path=0.,
             layer_scale_init_value=1e-5,
             act_layer=nn.GELU,
@@ -488,7 +487,7 @@ class EfficientFormerV2Stage(nn.Module):
                 stride=block_stride,
                 mlp_ratio=mlp_ratio[block_idx],
                 use_attn=block_use_attn and block_idx > remain_idx,
-                drop=drop,
+                proj_drop=proj_drop,
                 drop_path=drop_path[block_idx],
                 layer_scale_init_value=layer_scale_init_value,
                 act_layer=act_layer,
@@ -521,6 +520,7 @@ class EfficientFormerV2(nn.Module):
             act_layer='gelu',
             num_classes=1000,
             drop_rate=0.,
+            proj_drop_rate=0.,
             drop_path_rate=0.,
             layer_scale_init_value=1e-5,
             num_vit=0,
@@ -557,7 +557,7 @@ class EfficientFormerV2(nn.Module):
                 block_use_attn=i >= 2,
                 num_vit=num_vit,
                 mlp_ratio=mlp_ratios[i],
-                drop=drop_rate,
+                proj_drop=proj_drop_rate,
                 drop_path=dpr[i],
                 layer_scale_init_value=layer_scale_init_value,
                 act_layer=act_layer,
@@ -573,6 +573,7 @@ class EfficientFormerV2(nn.Module):
         # Classifier head
         self.num_features = embed_dims[-1]
         self.norm = norm_layer(embed_dims[-1])
+        self.head_drop = nn.Dropout(drop_rate)
         self.head = nn.Linear(embed_dims[-1], num_classes) if num_classes > 0 else nn.Identity()
         self.dist = distillation
         if self.dist:
@@ -631,6 +632,7 @@ class EfficientFormerV2(nn.Module):
     def forward_head(self, x, pre_logits: bool = False):
         if self.global_pool == 'avg':
             x = x.mean(dim=(2, 3))
+        x = self.head_drop(x)
         if pre_logits:
             return x
         x, x_dist = self.head(x), self.head_dist(x)
@@ -684,7 +686,7 @@ def _create_efficientformerv2(variant, pretrained=False, **kwargs):
 
 
 @register_model
-def efficientformerv2_s0(pretrained=False, **kwargs):
+def efficientformerv2_s0(pretrained=False, **kwargs) -> EfficientFormerV2:
     model_args = dict(
         depths=EfficientFormer_depth['S0'],
         embed_dims=EfficientFormer_width['S0'],
@@ -696,7 +698,7 @@ def efficientformerv2_s0(pretrained=False, **kwargs):
 
 
 @register_model
-def efficientformerv2_s1(pretrained=False, **kwargs):
+def efficientformerv2_s1(pretrained=False, **kwargs) -> EfficientFormerV2:
     model_args = dict(
         depths=EfficientFormer_depth['S1'],
         embed_dims=EfficientFormer_width['S1'],
@@ -708,7 +710,7 @@ def efficientformerv2_s1(pretrained=False, **kwargs):
 
 
 @register_model
-def efficientformerv2_s2(pretrained=False, **kwargs):
+def efficientformerv2_s2(pretrained=False, **kwargs) -> EfficientFormerV2:
     model_args = dict(
         depths=EfficientFormer_depth['S2'],
         embed_dims=EfficientFormer_width['S2'],
@@ -720,7 +722,7 @@ def efficientformerv2_s2(pretrained=False, **kwargs):
 
 
 @register_model
-def efficientformerv2_l(pretrained=False, **kwargs):
+def efficientformerv2_l(pretrained=False, **kwargs) -> EfficientFormerV2:
     model_args = dict(
         depths=EfficientFormer_depth['L'],
         embed_dims=EfficientFormer_width['L'],

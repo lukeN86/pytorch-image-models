@@ -24,7 +24,6 @@ Modifications and additions for timm hacked together by / Copyright 2021, Ross W
 # https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
 # Copyright 2020 Ross Wightman, Apache-2.0 License
 from collections import OrderedDict
-from dataclasses import dataclass
 from functools import partial
 from typing import Dict
 
@@ -32,12 +31,10 @@ import torch
 import torch.nn as nn
 
 from timm.data import IMAGENET_DEFAULT_STD, IMAGENET_DEFAULT_MEAN
-from timm.layers import to_ntuple, to_2tuple, get_act_layer, DropPath, trunc_normal_
+from timm.layers import to_ntuple, to_2tuple, get_act_layer, DropPath, trunc_normal_, ndgrid
 from ._builder import build_model_with_cfg
 from ._manipulate import checkpoint_seq
-from ._pretrained import generate_default_cfgs
-from ._registry import register_model
-
+from ._registry import generate_default_cfgs, register_model
 
 __all__ = ['Levit']
 
@@ -197,7 +194,7 @@ class Attention(nn.Module):
         ]))
 
         self.attention_biases = nn.Parameter(torch.zeros(num_heads, resolution[0] * resolution[1]))
-        pos = torch.stack(torch.meshgrid(torch.arange(resolution[0]), torch.arange(resolution[1]))).flatten(1)
+        pos = torch.stack(ndgrid(torch.arange(resolution[0]), torch.arange(resolution[1]))).flatten(1)
         rel_pos = (pos[..., :, None] - pos[..., None, :]).abs()
         rel_pos = (rel_pos[0] * resolution[1]) + rel_pos[1]
         self.register_buffer('attention_bias_idxs', rel_pos, persistent=False)
@@ -293,10 +290,11 @@ class AttentionDownsample(nn.Module):
         ]))
 
         self.attention_biases = nn.Parameter(torch.zeros(num_heads, resolution[0] * resolution[1]))
-        k_pos = torch.stack(torch.meshgrid(torch.arange(resolution[0]), torch.arange(resolution[1]))).flatten(1)
-        q_pos = torch.stack(torch.meshgrid(
+        k_pos = torch.stack(ndgrid(torch.arange(resolution[0]), torch.arange(resolution[1]))).flatten(1)
+        q_pos = torch.stack(ndgrid(
             torch.arange(0, resolution[0], step=stride),
-            torch.arange(0, resolution[1], step=stride))).flatten(1)
+            torch.arange(0, resolution[1], step=stride)
+        )).flatten(1)
         rel_pos = (q_pos[..., :, None] - k_pos[..., None, :]).abs()
         rel_pos = (rel_pos[0] * resolution[1]) + rel_pos[1]
         self.register_buffer('attention_bias_idxs', rel_pos, persistent=False)
@@ -835,101 +833,101 @@ default_cfgs = generate_default_cfgs({
 
 
 @register_model
-def levit_128s(pretrained=False, **kwargs):
+def levit_128s(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_128s', pretrained=pretrained, **kwargs)
 
 
 @register_model
-def levit_128(pretrained=False, **kwargs):
+def levit_128(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_128', pretrained=pretrained, **kwargs)
 
 
 @register_model
-def levit_192(pretrained=False, **kwargs):
+def levit_192(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_192', pretrained=pretrained, **kwargs)
 
 
 @register_model
-def levit_256(pretrained=False, **kwargs):
+def levit_256(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_256', pretrained=pretrained, **kwargs)
 
 
 @register_model
-def levit_384(pretrained=False, **kwargs):
+def levit_384(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_384', pretrained=pretrained, **kwargs)
 
 
 @register_model
-def levit_384_s8(pretrained=False, **kwargs):
+def levit_384_s8(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_384_s8', pretrained=pretrained, **kwargs)
 
 
 @register_model
-def levit_512_s8(pretrained=False, **kwargs):
+def levit_512_s8(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_512_s8', pretrained=pretrained, distilled=False, **kwargs)
 
 
 @register_model
-def levit_512(pretrained=False, **kwargs):
+def levit_512(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_512', pretrained=pretrained, distilled=False, **kwargs)
 
 
 @register_model
-def levit_256d(pretrained=False, **kwargs):
+def levit_256d(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_256d', pretrained=pretrained, distilled=False, **kwargs)
 
 
 @register_model
-def levit_512d(pretrained=False, **kwargs):
+def levit_512d(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_512d', pretrained=pretrained, distilled=False, **kwargs)
 
 
 @register_model
-def levit_conv_128s(pretrained=False, **kwargs):
+def levit_conv_128s(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_conv_128s', pretrained=pretrained, use_conv=True, **kwargs)
 
 
 @register_model
-def levit_conv_128(pretrained=False, **kwargs):
+def levit_conv_128(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_conv_128', pretrained=pretrained, use_conv=True, **kwargs)
 
 
 @register_model
-def levit_conv_192(pretrained=False, **kwargs):
+def levit_conv_192(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_conv_192', pretrained=pretrained, use_conv=True, **kwargs)
 
 
 @register_model
-def levit_conv_256(pretrained=False, **kwargs):
+def levit_conv_256(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_conv_256', pretrained=pretrained, use_conv=True, **kwargs)
 
 
 @register_model
-def levit_conv_384(pretrained=False, **kwargs):
+def levit_conv_384(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_conv_384', pretrained=pretrained, use_conv=True, **kwargs)
 
 
 @register_model
-def levit_conv_384_s8(pretrained=False, **kwargs):
+def levit_conv_384_s8(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_conv_384_s8', pretrained=pretrained, use_conv=True, **kwargs)
 
 
 @register_model
-def levit_conv_512_s8(pretrained=False, **kwargs):
+def levit_conv_512_s8(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_conv_512_s8', pretrained=pretrained, use_conv=True, distilled=False, **kwargs)
 
 
 @register_model
-def levit_conv_512(pretrained=False, **kwargs):
+def levit_conv_512(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_conv_512', pretrained=pretrained, use_conv=True, distilled=False, **kwargs)
 
 
 @register_model
-def levit_conv_256d(pretrained=False, **kwargs):
+def levit_conv_256d(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_conv_256d', pretrained=pretrained, use_conv=True, distilled=False, **kwargs)
 
 
 @register_model
-def levit_conv_512d(pretrained=False, **kwargs):
+def levit_conv_512d(pretrained=False, **kwargs) -> Levit:
     return create_levit('levit_conv_512d', pretrained=pretrained, use_conv=True, distilled=False, **kwargs)
 

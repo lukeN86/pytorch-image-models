@@ -27,7 +27,7 @@ class ImageDataset(data.Dataset):
             split='train',
             class_map=None,
             load_bytes=False,
-            img_mode='RGB',
+            input_img_mode='RGB',
             transform=None,
             target_transform=None,
     ):
@@ -40,7 +40,7 @@ class ImageDataset(data.Dataset):
             )
         self.reader = reader
         self.load_bytes = load_bytes
-        self.img_mode = img_mode
+        self.input_img_mode = input_img_mode
         self.transform = transform
         self.target_transform = target_transform
         self._consecutive_errors = 0
@@ -59,8 +59,8 @@ class ImageDataset(data.Dataset):
                 raise e
         self._consecutive_errors = 0
 
-        if self.img_mode and not self.load_bytes:
-            img = img.convert(self.img_mode)
+        if self.input_img_mode and not self.load_bytes:
+            img = img.convert(self.input_img_mode)
         if self.transform is not None:
             img = self.transform(img)
 
@@ -88,13 +88,19 @@ class IterableImageDataset(data.IterableDataset):
             root,
             reader=None,
             split='train',
+            class_map=None,
             is_training=False,
-            batch_size=None,
+            batch_size=1,
+            num_samples=None,
             seed=42,
             repeats=0,
             download=False,
+            input_img_mode='RGB',
+            input_key=None,
+            target_key=None,
             transform=None,
             target_transform=None,
+            max_steps=None,
     ):
         assert reader is not None
         if isinstance(reader, str):
@@ -102,11 +108,17 @@ class IterableImageDataset(data.IterableDataset):
                 reader,
                 root=root,
                 split=split,
+                class_map=class_map,
                 is_training=is_training,
                 batch_size=batch_size,
+                num_samples=num_samples,
                 seed=seed,
                 repeats=repeats,
                 download=download,
+                input_img_mode=input_img_mode,
+                input_key=input_key,
+                target_key=target_key,
+                max_steps=max_steps,
             )
         else:
             self.reader = reader

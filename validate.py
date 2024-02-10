@@ -26,7 +26,7 @@ from timm.data import create_dataset, create_loader, resolve_data_config, RealLa
 from timm.layers import apply_test_time_pool, set_fast_norm
 from timm.models import create_model, load_checkpoint, is_model, list_models
 from timm.utils import accuracy, AverageMeter, natural_key, setup_default_logging, set_jit_fuser, \
-    decay_batch_step, check_batch_size_retry, ParseKwargs
+    decay_batch_step, check_batch_size_retry, ParseKwargs, reparameterize_model
 
 try:
     from apex import amp
@@ -61,12 +61,25 @@ parser.add_argument('--dataset', metavar='NAME', default='',
                     help='dataset type + name ("<type>/<name>") (default: ImageFolder or ImageTar if empty)')
 parser.add_argument('--split', metavar='NAME', default='validation',
                     help='dataset split (default: validation)')
+parser.add_argument('--num-samples', default=None, type=int,
+                    metavar='N', help='Manually specify num samples in dataset split, for IterableDatasets.')
 parser.add_argument('--dataset-download', action='store_true', default=False,
                     help='Allow download of dataset for torch/ and tfds/ datasets that support it.')
+parser.add_argument('--class-map', default='', type=str, metavar='FILENAME',
+                    help='path to class to idx mapping file (default: "")')
+parser.add_argument('--input-key', default=None, type=str,
+                   help='Dataset key for input images.')
+parser.add_argument('--input-img-mode', default=None, type=str,
+                   help='Dataset image conversion mode for input images.')
+parser.add_argument('--target-key', default=None, type=str,
+                   help='Dataset key for target labels.')
+
 parser.add_argument('--model', '-m', metavar='NAME', default='dpn92',
                     help='model architecture (default: dpn92)')
+parser.add_argument('--pretrained', dest='pretrained', action='store_true',
+                    help='use pre-trained model')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
-                    help='number of data loading workers (default: 2)')
+                    help='number of data loading workers (default: 4)')
 parser.add_argument('-b', '--batch-size', default=256, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
 parser.add_argument('--img-size', default=None, type=int,
@@ -81,6 +94,8 @@ parser.add_argument('--crop-pct', default=None, type=float,
                     metavar='N', help='Input image center crop pct')
 parser.add_argument('--crop-mode', default=None, type=str,
                     metavar='N', help='Input image crop mode (squash, border, center). Model default if None.')
+parser.add_argument('--crop-border-pixels', type=int, default=None,
+                    help='Crop pixels from image border.')
 parser.add_argument('--mean', type=float, nargs='+', default=None, metavar='MEAN',
                     help='Override mean pixel value of dataset')
 parser.add_argument('--std', type=float,  nargs='+', default=None, metavar='STD',
@@ -89,16 +104,12 @@ parser.add_argument('--interpolation', default='', type=str, metavar='NAME',
                     help='Image resize interpolation type (overrides model)')
 parser.add_argument('--num-classes', type=int, default=None,
                     help='Number classes in dataset')
-parser.add_argument('--class-map', default='', type=str, metavar='FILENAME',
-                    help='path to class to idx mapping file (default: "")')
 parser.add_argument('--gp', default=None, type=str, metavar='POOL',
                     help='Global pool type, one of (fast, avg, max, avgmax, avgmaxc). Model default if None.')
 parser.add_argument('--log-freq', default=10, type=int,
                     metavar='N', help='batch logging frequency (default: 10)')
 parser.add_argument('--checkpoint', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
-parser.add_argument('--pretrained', dest='pretrained', action='store_true',
-                    help='use pre-trained model')
 parser.add_argument('--num-gpu', type=int, default=1,
                     help='Number of GPUS to use')
 parser.add_argument('--test-pool', dest='test_pool', action='store_true',
@@ -125,6 +136,8 @@ parser.add_argument('--fuser', default='', type=str,
                     help="Select jit fuser. One of ('', 'te', 'old', 'nvfuser')")
 parser.add_argument('--fast-norm', default=False, action='store_true',
                     help='enable experimental fast-norm')
+parser.add_argument('--reparam', default=False, action='store_true',
+                    help='Reparameterize model')
 parser.add_argument('--model-kwargs', nargs='*', default={}, action=ParseKwargs)
 
 
@@ -207,6 +220,9 @@ def validate(args):
     if args.checkpoint:
         load_checkpoint(model, args.checkpoint, args.use_ema)
 
+    if args.reparam:
+        model = reparameterize_model(model)
+
     param_count = sum([m.numel() for m in model.parameters()])
     _logger.info('Model %s created, param count: %d' % (args.model, param_count))
 
@@ -244,6 +260,10 @@ def validate(args):
     criterion = nn.CrossEntropyLoss().to(device)
 
     root_dir = args.data or args.data_dir
+    if args.input_img_mode is None:
+        input_img_mode = 'RGB' if data_config['input_size'][0] == 3 else 'L'
+    else:
+        input_img_mode = args.input_img_mode
     dataset = create_dataset(
         root=root_dir,
         name=args.dataset,
@@ -251,12 +271,15 @@ def validate(args):
         download=args.dataset_download,
         load_bytes=args.tf_preprocessing,
         class_map=args.class_map,
+        num_samples=args.num_samples,
+        input_key=args.input_key,
+        input_img_mode=input_img_mode,
+        target_key=args.target_key,
     )
 
     if args.valid_labels:
         with open(args.valid_labels, 'r') as f:
-            valid_labels = {int(line.rstrip()) for line in f}
-            valid_labels = [i in valid_labels for i in range(args.num_classes)]
+            valid_labels = [int(line.rstrip()) for line in f]
     else:
         valid_labels = None
 
@@ -277,6 +300,7 @@ def validate(args):
         num_workers=args.workers,
         crop_pct=crop_pct,
         crop_mode=data_config['crop_mode'],
+        crop_border_pixels=args.crop_border_pixels,
         pin_memory=args.pin_mem,
         device=device,
         tf_preprocessing=args.tf_preprocessing,
@@ -386,6 +410,9 @@ def _try_run(args, initial_batch_size):
     return results
 
 
+_NON_IN1K_FILTERS = ['*_in21k', '*_in22k', '*in12k', '*_dino', '*fcmae', '*seer']
+
+
 def main():
     setup_default_logging()
     args = parser.parse_args()
@@ -401,11 +428,17 @@ def main():
         if args.model == 'all':
             # validate all models in a list of names with pretrained checkpoints
             args.pretrained = True
-            model_names = list_models('convnext*', pretrained=True, exclude_filters=['*_in21k', '*_in22k', '*in12k', '*_dino', '*fcmae'])
+            model_names = list_models(
+                pretrained=True,
+                exclude_filters=_NON_IN1K_FILTERS,
+            )
             model_cfgs = [(n, '') for n in model_names]
         elif not is_model(args.model):
             # model name doesn't exist, try as wildcard filter
-            model_names = list_models(args.model, pretrained=True)
+            model_names = list_models(
+                args.model,
+                pretrained=True,
+            )
             model_cfgs = [(n, '') for n in model_names]
 
         if not model_cfgs and os.path.isfile(args.model):
