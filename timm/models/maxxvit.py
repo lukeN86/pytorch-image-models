@@ -74,6 +74,7 @@ class MaxxVitTransformerCfg:
     window_size: Optional[Tuple[int, int]] = None
     grid_size: Optional[Tuple[int, int]] = None
     no_block_attn: bool = False  # disable window block attention for maxvit (ie only grid)
+    no_grid_attn: bool = False  # disable grid block attention for maxvit (ie only block)
     use_nchw_attn: bool = False  # for MaxViT variants (not used for CoAt), keep tensors in NCHW order
     init_values: Optional[float] = None
     act_layer: str = 'gelu'
@@ -936,12 +937,13 @@ class MaxxVitBlock(nn.Module):
         attn_kwargs = dict(dim=dim_out, cfg=transformer_cfg, drop_path=drop_path)
         partition_layer = PartitionAttention2d if self.nchw_attn else PartitionAttentionCl
         self.attn_block = None if transformer_cfg.no_block_attn else partition_layer(**attn_kwargs)
-        self.attn_grid = partition_layer(partition_type='grid', **attn_kwargs)
+        self.attn_grid = None if  transformer_cfg.no_grid_attn else partition_layer(partition_type='grid', **attn_kwargs)
 
     def init_weights(self, scheme=''):
         if self.attn_block is not None:
             named_apply(partial(_init_transformer, scheme=scheme), self.attn_block)
-        named_apply(partial(_init_transformer, scheme=scheme), self.attn_grid)
+        if self.attn_grid is not None:
+            named_apply(partial(_init_transformer, scheme=scheme), self.attn_grid)
         named_apply(partial(_init_conv, scheme=scheme), self.conv)
 
     def forward(self, x):
@@ -952,7 +954,8 @@ class MaxxVitBlock(nn.Module):
             x = x.permute(0, 2, 3, 1)  # to NHWC (channels-last)
         if self.attn_block is not None:
             x = self.attn_block(x)
-        x = self.attn_grid(x)
+        if self.attn_grid is not None:
+            x = self.attn_grid(x)
         if not self.nchw_attn:
             x = x.permute(0, 3, 1, 2)  # back to NCHW
         return x
@@ -1331,6 +1334,7 @@ def _rw_max_cfg(
         init_values=None,
         rel_pos_type='bias',
         rel_pos_dim=512,
+        no_grid_attn=False
 ):
     # 'RW' timm variant models were created and trained before seeing https://github.com/google-research/maxvit
     # Differences of initial timm models:
@@ -1358,6 +1362,7 @@ def _rw_max_cfg(
             norm_layer_cl=transformer_norm_layer_cl,
             rel_pos_type=rel_pos_type,
             rel_pos_dim=rel_pos_dim,
+            no_grid_attn=no_grid_attn
         ),
     )
 
@@ -1632,6 +1637,15 @@ model_cfgs = dict(
         block_type=('M',) * 4,
         stem_width=(32, 64),
         **_rw_max_cfg(),
+    ),
+    maxvit_tiny_rw_nogrid=MaxxVitCfg(
+        embed_dim=(64, 128, 256, 512),
+        depths=(2, 2, 5, 2),
+        block_type=('M',) * 4,
+        stem_width=(32, 64),
+        **_rw_max_cfg(
+            no_grid_attn=True
+        ),
     ),
     maxvit_tiny_pm=MaxxVitCfg(
         embed_dim=(64, 128, 256, 512),
@@ -2175,6 +2189,9 @@ def maxvit_nano_rw_256(pretrained=False, **kwargs) -> MaxxVit:
 def maxvit_tiny_rw_224(pretrained=False, **kwargs) -> MaxxVit:
     return _create_maxxvit('maxvit_tiny_rw_224', pretrained=pretrained, **kwargs)
 
+@register_model
+def maxvit_tiny_rw_nogrid_224(pretrained=False, **kwargs):
+    return _create_maxxvit('maxvit_tiny_rw_nogrid_224', pretrained=pretrained, **kwargs)
 
 @register_model
 def maxvit_tiny_rw_256(pretrained=False, **kwargs) -> MaxxVit:

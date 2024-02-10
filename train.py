@@ -24,6 +24,7 @@ from contextlib import suppress
 from datetime import datetime
 from functools import partial
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torchvision.utils
@@ -37,6 +38,7 @@ from timm.loss import JsdCrossEntropy, SoftTargetCrossEntropy, BinaryCrossEntrop
 from timm.models import create_model, safe_model_name, resume_checkpoint, load_checkpoint, model_parameters
 from timm.optim import create_optimizer_v2, optimizer_kwargs
 from timm.scheduler import create_scheduler_v2, scheduler_kwargs
+from timm.data.partial_dataset import PartialDataset
 from timm.utils import ApexScaler, NativeScaler
 
 try:
@@ -155,6 +157,8 @@ group.add_argument('--grad-checkpointing', action='store_true', default=False,
                    help='Enable gradient checkpointing through model blocks/stages')
 group.add_argument('--fast-norm', default=False, action='store_true',
                    help='enable experimental fast-norm')
+group.add_argument('--arch-code', default=None, type=str, metavar='ARCHCODE',
+                   help='Architecture code')
 group.add_argument('--model-kwargs', nargs='*', default={}, action=utils.ParseKwargs)
 group.add_argument('--head-init-scale', default=None, type=float,
                    help='Head initialization scale')
@@ -379,6 +383,14 @@ group.add_argument('--use-multi-epochs-loader', action='store_true', default=Fal
                    help='use the multi-epochs-loader to save time at the beginning of every epoch')
 group.add_argument('--log-wandb', action='store_true', default=False,
                    help='log training and validation metrics to wandb')
+group.add_argument('--wandb-runid', default='', type=str,  help='WandDB run_id to resume the run')
+group.add_argument('--find-unused-parameters', action='store_true', default=False,
+                   help='Find unused parameters in DDP')
+
+
+
+
+
 
 
 def _parse_args():
@@ -485,7 +497,7 @@ def main():
 
     if utils.is_primary(args):
         _logger.info(
-            f'Model {safe_model_name(args.model)} created, param count:{sum([m.numel() for m in model.parameters()])}')
+            f'Model {safe_model_name(args.model)} {args.arch_code or ""} created, param count:{sum([m.numel() for m in model.parameters()])}')
 
     data_config = resolve_data_config(vars(args), model=model, verbose=utils.is_primary(args))
 
@@ -504,6 +516,8 @@ def main():
     model.to(device=device)
     if args.channels_last:
         model.to(memory_format=torch.channels_last)
+
+    print(model)
 
     # setup synchronized BatchNorm for distributed training
     if args.distributed and args.sync_bn:
@@ -601,7 +615,7 @@ def main():
         else:
             if utils.is_primary(args):
                 _logger.info("Using native Torch DistributedDataParallel.")
-            model = NativeDDP(model, device_ids=[device], broadcast_buffers=not args.no_ddp_bb)
+            model = NativeDDP(model, device_ids=[device], broadcast_buffers=not args.no_ddp_bb, find_unused_parameters=args.find_unused_parameters)
         # NOTE: EMA model does not need to be wrapped by DDP
 
     if args.torchcompile:
@@ -632,6 +646,7 @@ def main():
         target_key=args.target_key,
         num_samples=args.train_num_samples,
     )
+
 
     if args.val_split:
         dataset_eval = create_dataset(
@@ -777,6 +792,7 @@ def main():
             exp_name = '-'.join([
                 datetime.now().strftime("%Y%m%d-%H%M%S"),
                 safe_model_name(args.model),
+                args.dataset.replace('/', '_'),
                 str(data_config['input_size'][-1])
             ])
         output_dir = utils.get_outdir(args.output if args.output else './output/train', exp_name)
@@ -796,7 +812,17 @@ def main():
 
     if utils.is_primary(args) and args.log_wandb:
         if has_wandb:
-            wandb.init(project=args.experiment, config=args)
+
+            if len(args.wandb_runid) > 0:
+                wandb.init(project='symmetrysearch', config=args, id=args.wandb_runid, resume='must')
+            else:
+                wandb.init(project='symmetrysearch', config=args)
+
+                # Log SLURM & PBS variables too
+                for key in os.environ:
+                    if key.startswith('SLURM') or key.startswith('PBS'):
+                        wandb.config[key] = os.getenv(key)
+
         else:
             _logger.warning(
                 "You've requested to log metrics to wandb but package not found. "

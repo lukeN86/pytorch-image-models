@@ -112,7 +112,7 @@ def create_model(
     if not is_model(model_name):
         raise RuntimeError('Unknown model (%s)' % model_name)
 
-    create_fn = model_entrypoint(model_name)
+
     with set_layer_config(scriptable=scriptable, exportable=exportable, no_jit=no_jit):
         model = create_fn(
             pretrained=pretrained,

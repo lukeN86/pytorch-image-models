@@ -10,8 +10,11 @@ from typing import Type
 
 import torch.nn as nn
 
+
+from .norm import GroupNorm, GroupNorm1, LayerNorm, LayerNorm2d, BatchNorm2dCl, LayerNormAcrossScales, BatchNormAcrossScales
 from .norm import GroupNorm, GroupNorm1, LayerNorm, LayerNorm2d, RmsNorm
 from torchvision.ops.misc import FrozenBatchNorm2d
+
 
 _NORM_MAP = dict(
     batchnorm=nn.BatchNorm2d,
@@ -21,6 +24,9 @@ _NORM_MAP = dict(
     groupnorm1=GroupNorm1,
     layernorm=LayerNorm,
     layernorm2d=LayerNorm2d,
+    batchnorm2dcl=BatchNorm2dCl,
+    layernormas=LayerNormAcrossScales,
+    batchnormas=BatchNormAcrossScales,
     rmsnorm=RmsNorm,
     frozenbatchnorm2d=FrozenBatchNorm2d,
 )
