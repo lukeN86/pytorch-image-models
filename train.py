@@ -383,6 +383,7 @@ group.add_argument('--use-multi-epochs-loader', action='store_true', default=Fal
                    help='use the multi-epochs-loader to save time at the beginning of every epoch')
 group.add_argument('--log-wandb', action='store_true', default=False,
                    help='log training and validation metrics to wandb')
+group.add_argument('--wandb-project', default='', type=str,  help='WandDB project name')
 group.add_argument('--wandb-runid', default='', type=str,  help='WandDB run_id to resume the run')
 group.add_argument('--find-unused-parameters', action='store_true', default=False,
                    help='Find unused parameters in DDP')
@@ -814,9 +815,9 @@ def main():
         if has_wandb:
 
             if len(args.wandb_runid) > 0:
-                wandb.init(project='symmetrysearch', config=args, id=args.wandb_runid, resume='must')
+                wandb.init(project=args.wandb_project, config=args, id=args.wandb_runid, resume='must')
             else:
-                wandb.init(project='symmetrysearch', config=args)
+                wandb.init(project=args.wandb_project, config=args)
 
                 # Log SLURM & PBS variables too
                 for key in os.environ:
