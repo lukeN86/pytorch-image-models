@@ -387,6 +387,8 @@ group.add_argument('--wandb-project', default='', type=str,  help='WandDB projec
 group.add_argument('--wandb-runid', default='', type=str,  help='WandDB run_id to resume the run')
 group.add_argument('--find-unused-parameters', action='store_true', default=False,
                    help='Find unused parameters in DDP')
+group.add_argument('--use-pair-sampling', action='store_true', default=False, help='Always include the same image twice in the training set')
+
 
 
 
@@ -726,6 +728,7 @@ def main():
         use_prefetcher=args.prefetcher,
         use_multi_epochs_loader=args.use_multi_epochs_loader,
         worker_seeding=args.worker_seeding,
+        use_pair_sampling=args.use_pair_sampling
     )
 
     loader_eval = None

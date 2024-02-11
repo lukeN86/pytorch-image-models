@@ -18,7 +18,7 @@ import numpy as np
 
 from .constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from .dataset import IterableImageDataset, ImageDataset
-from .distributed_sampler import OrderedDistributedSampler, RepeatAugSampler
+from .distributed_sampler import OrderedDistributedSampler, RepeatAugSampler, RandomPairsDistributedSampler
 from .random_erasing import RandomErasing
 from .mixup import FastCollateMixup
 from .transforms_factory import create_transform
@@ -226,6 +226,7 @@ def create_loader(
         persistent_workers: bool = True,
         worker_seeding: str = 'all',
         tf_preprocessing: bool = False,
+        use_pair_sampling: bool = False
 ):
     """
 
@@ -269,6 +270,7 @@ def create_loader(
         persistent_workers: Enable persistent worker processes.
         worker_seeding: Control worker random seeding at init.
         tf_preprocessing: Use TF 1.0 inference preprocessing for testing model ports.
+        use_pair_sampling: Always include the same image twice in the training set
 
     Returns:
         DataLoader
@@ -312,7 +314,10 @@ def create_loader(
         dataset.set_loader_cfg(num_workers=num_workers)
 
     sampler = None
-    if distributed and not isinstance(dataset, torch.utils.data.IterableDataset):
+    if use_pair_sampling and is_training:
+        assert (batch_size % 2) == 0, "Batch size must be even for pair sampling."
+        sampler = RandomPairsDistributedSampler(dataset)
+    elif distributed and not isinstance(dataset, torch.utils.data.IterableDataset):
         if is_training:
             if num_aug_repeats:
                 sampler = RepeatAugSampler(dataset, num_repeats=num_aug_repeats)
