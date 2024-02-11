@@ -378,7 +378,7 @@ group.add_argument('--eval-metric', default='top1', type=str, metavar='EVAL_METR
                    help='Best metric (default: "top1"')
 group.add_argument('--tta', type=int, default=0, metavar='N',
                    help='Test/inference time augmentation (oversampling) factor. 0=None (default: 0)')
-group.add_argument("--local_rank", default=0, type=int)
+group.add_argument("--local-rank", default=0, type=int)
 group.add_argument('--use-multi-epochs-loader', action='store_true', default=False,
                    help='use the multi-epochs-loader to save time at the beginning of every epoch')
 group.add_argument('--log-wandb', action='store_true', default=False,
