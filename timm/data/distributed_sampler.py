@@ -186,7 +186,7 @@ class RandomPairsDistributedSampler(Sampler[int]):
         if num_replicas is None:
             if not dist.is_available():
                 raise RuntimeError("Requires distributed package to be available")
-            num_replicas = dist.get_world_size() if dist.is_initialized() else 1
+            num_replicas = dist.get_world_size() if dist.is_initialized() else 0
         if rank is None:
             if not dist.is_available():
                 raise RuntimeError("Requires distributed package to be available")
@@ -223,14 +223,14 @@ class RandomPairsDistributedSampler(Sampler[int]):
         # else:
         #     indices += (indices * math.ceil(padding_size / indices_len))[:padding_size]
 
-        assert (len(indices) * self.repeats) == self.total_size
+        assert (len(indices) * self.repeats) == self.total_size, f"There are {len(indices)} indices but total size is {self.total_size} (NUM_REPLICAS={self.num_replicas}, RANK={self.rank}, DATA SIZE={len(self.dataset)})"
 
         # subsample
         indices = indices[self.rank:self.total_size:self.num_replicas]
         indices = torch.repeat_interleave(indices, repeats=self.repeats, dim=0)
         indices = indices.tolist()  # leaving as tensor thrashes dataloader memory
 
-        assert len(indices) == self.num_samples
+        assert len(indices) == self.num_samples, f"There are {len(indices)} indices but {self.num_samples} samples (NUM_REPLICAS={self.num_replicas}, RANK={self.rank}, DATA SIZE={len(self.dataset)}"
 
         return iter(indices)
 
