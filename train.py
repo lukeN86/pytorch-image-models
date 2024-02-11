@@ -697,7 +697,7 @@ def main():
         train_interpolation = data_config['interpolation']
 
     if args.use_pair_sampling:
-        logging.info('Using Pair Sampling')
+        _logger.info('Using Pair Sampling')
 
     loader_train = create_loader(
         dataset_train,

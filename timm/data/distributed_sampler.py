@@ -186,7 +186,7 @@ class RandomPairsDistributedSampler(Sampler[int]):
         if num_replicas is None:
             if not dist.is_available():
                 raise RuntimeError("Requires distributed package to be available")
-            num_replicas = dist.get_world_size() if dist.is_initialized() else 0
+            num_replicas = dist.get_world_size() if dist.is_initialized() else 1
         if rank is None:
             if not dist.is_available():
                 raise RuntimeError("Requires distributed package to be available")
@@ -210,23 +210,22 @@ class RandomPairsDistributedSampler(Sampler[int]):
             # deterministically shuffle based on epoch and seed
             g = torch.Generator()
             g.manual_seed(self.seed + self.epoch)
-            indices = torch.randperm(len(self.dataset), generator=g)  # type: ignore[arg-type]
+            indices = torch.randperm(len(self.dataset), generator=g).tolist()  # type: ignore[arg-type]
         else:
-            indices = torch.from_numpy(np.array(list(range(len(self.dataset)))))  # type: ignore[arg-type]
+            indices = list(range(len(self.dataset)))  # type: ignore[arg-type]
 
 
         # add extra samples to make it evenly divisible
-        # indices_len = len(indices) * self.repeats
-        # padding_size = self.total_size - indices_len
-        # if padding_size <= indices_len:
-        #     indices += indices[:padding_size]
-        # else:
-        #     indices += (indices * math.ceil(padding_size / indices_len))[:padding_size]
+        padding_size = (self.total_size // self.repeats) - len(indices)
+        if padding_size <= len(indices):
+            indices += indices[:padding_size]
+        else:
+            indices += (indices * math.ceil(padding_size / len(indices)))[:padding_size]
 
         assert (len(indices) * self.repeats) == self.total_size, f"There are {len(indices)} indices but total size is {self.total_size} (NUM_REPLICAS={self.num_replicas}, RANK={self.rank}, DATA SIZE={len(self.dataset)})"
 
         # subsample
-        indices = indices[self.rank:self.total_size:self.num_replicas]
+        indices =  torch.from_numpy(np.array(indices[self.rank:self.total_size:self.num_replicas]))
         indices = torch.repeat_interleave(indices, repeats=self.repeats, dim=0)
         indices = indices.tolist()  # leaving as tensor thrashes dataloader memory
 
