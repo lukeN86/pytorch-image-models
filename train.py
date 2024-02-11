@@ -696,7 +696,7 @@ def main():
     if args.no_aug or not train_interpolation:
         train_interpolation = data_config['interpolation']
 
-    if args.use_pair_sampling:
+    if utils.is_primary(args) and args.use_pair_sampling:
         _logger.info('Using Pair Sampling')
 
     loader_train = create_loader(
