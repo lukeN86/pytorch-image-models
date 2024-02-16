@@ -777,10 +777,13 @@ def main():
             num_samples=args.val_num_samples,
         )
 
+        num_eval_points = 11
+        symmetries_eval_batch_size = (args.validation_batch_size or args.batch_size) // num_eval_points
+
         symmetries_eval = create_loader(
             dataset_eval_symmetries,
             input_size=data_config['input_size'],
-            batch_size=1,
+            batch_size=symmetries_eval_batch_size,
             is_training=False,
             interpolation=data_config['interpolation'],
             mean=data_config['mean'],
@@ -794,7 +797,7 @@ def main():
         )
 
         assert dataset_eval_symmetries.transform is not None
-        dataset_eval_symmetries.transform = SymmetryTransform(ScaleSymmetry(), dataset_eval_symmetries.transform)
+        dataset_eval_symmetries.transform = SymmetryTransform(ScaleSymmetry(), dataset_eval_symmetries.transform, num_eval_points=num_eval_points)
 
 
 
@@ -1261,8 +1264,10 @@ def validate_symmetry(
     with torch.no_grad():
         for batch_idx, (input, target) in enumerate(loader):
             last_batch = batch_idx == last_idx
+            num_eval_points = len(input)
+            batch_size = input[0].size(0)
             input = torch.cat(input, dim=0).to(device)
-            target = target.repeat(input.size(0)).to(device)
+            target = target.repeat(num_eval_points).to(device)
             if args.channels_last:
                 input = input.contiguous(memory_format=torch.channels_last)
 
@@ -1271,9 +1276,13 @@ def validate_symmetry(
                 if isinstance(output, (tuple, list)):
                     output = output[0]
 
+            output = output.float()
+
             acc1, acc5 = utils.accuracy(output, target, topk=(1, 5))
 
-            reference_output = output[output.size(0) // 2, ...]
+            reference_output_index = (num_eval_points // 2) * batch_size
+            reference_output = output[reference_output_index:(reference_output_index+batch_size), ...]
+            reference_output = reference_output.repeat(num_eval_points, 1)
             mse = (output - reference_output).abs().mean()
 
 
