@@ -31,6 +31,7 @@ def update_summary(
         epoch,
         train_metrics,
         eval_metrics,
+        symmetry_metrics,
         filename,
         lr=None,
         write_header=False,
@@ -40,6 +41,8 @@ def update_summary(
     rowd.update([('train_' + k, v) for k, v in train_metrics.items()])
     if eval_metrics:
         rowd.update([('eval_' + k, v) for k, v in eval_metrics.items()])
+    if symmetry_metrics:
+        rowd.update([(k, v) for k, v in eval_metrics.items()])
     if lr is not None:
         rowd['lr'] = lr
     if log_wandb:

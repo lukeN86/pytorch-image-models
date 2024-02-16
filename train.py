@@ -41,6 +41,9 @@ from timm.scheduler import create_scheduler_v2, scheduler_kwargs
 from timm.data.partial_dataset import PartialDataset
 from timm.utils import ApexScaler, NativeScaler
 
+from symmetry_transform import SymmetryTransform
+from symmetries.scale_symmetry import ScaleSymmetry
+
 try:
     from apex import amp
     from apex.parallel import DistributedDataParallel as ApexDDP
@@ -388,6 +391,7 @@ group.add_argument('--wandb-runid', default='', type=str,  help='WandDB run_id t
 group.add_argument('--find-unused-parameters', action='store_true', default=False,
                    help='Find unused parameters in DDP')
 group.add_argument('--use-pair-sampling', action='store_true', default=False, help='Always include the same image twice in the training set')
+group.add_argument('--eval-symmetries', default='', type=str, nargs='+', metavar='EVAL_METRIC', help='Name(s) of symmetries to evaluate')
 
 
 
@@ -757,6 +761,43 @@ def main():
             use_prefetcher=args.prefetcher,
         )
 
+    symmetries_eval = None
+    if args.eval_symmetries:
+        dataset_eval_symmetries = create_dataset(
+            args.dataset,
+            root=args.data_dir,
+            split=args.val_split,
+            is_training=False,
+            class_map=args.class_map,
+            download=args.dataset_download,
+            batch_size=args.batch_size,
+            input_img_mode=input_img_mode,
+            input_key=args.input_key,
+            target_key=args.target_key,
+            num_samples=args.val_num_samples,
+        )
+
+        symmetries_eval = create_loader(
+            dataset_eval_symmetries,
+            input_size=data_config['input_size'],
+            batch_size=1,
+            is_training=False,
+            interpolation=data_config['interpolation'],
+            mean=data_config['mean'],
+            std=data_config['std'],
+            num_workers=args.workers,
+            distributed=args.distributed,
+            crop_pct=data_config['crop_pct'],
+            pin_memory=args.pin_mem,
+            device=device,
+            use_prefetcher=False
+        )
+
+        assert dataset_eval_symmetries.transform is not None
+        dataset_eval_symmetries.transform = SymmetryTransform(ScaleSymmetry(), dataset_eval_symmetries.transform)
+
+
+
     # setup loss function
     if args.jsd_loss:
         assert num_aug_splits > 1  # JSD only valid with aug splits set
@@ -867,6 +908,18 @@ def main():
             elif args.distributed and hasattr(loader_train.sampler, 'set_epoch'):
                 loader_train.sampler.set_epoch(epoch)
 
+            if symmetries_eval is not None:
+                symmetry_metrics = validate_symmetry(
+                    'scale',
+                    model,
+                    symmetries_eval,
+                    args,
+                    amp_autocast=amp_autocast,
+                )
+            else:
+                symmetry_metrics = None
+
+
             train_metrics = train_one_epoch(
                 epoch,
                 model,
@@ -915,10 +968,12 @@ def main():
 
             if output_dir is not None:
                 lrs = [param_group['lr'] for param_group in optimizer.param_groups]
+
                 utils.update_summary(
                     epoch,
                     train_metrics,
                     eval_metrics,
+                    symmetry_metrics,
                     filename=os.path.join(output_dir, 'summary.csv'),
                     lr=sum(lrs) / len(lrs),
                     write_header=best_metric is None,
@@ -1181,6 +1236,73 @@ def validate(
                 )
 
     metrics = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
+
+    return metrics
+
+
+def validate_symmetry(
+        symmetry_name,
+        model,
+        loader,
+        args,
+        device=torch.device('cuda'),
+        amp_autocast=suppress
+
+):
+    batch_time_m = utils.AverageMeter()
+    mse_m = utils.AverageMeter()
+    top1_m = utils.AverageMeter()
+    top5_m = utils.AverageMeter()
+
+    model.eval()
+
+    end = time.time()
+    last_idx = len(loader) - 1
+    with torch.no_grad():
+        for batch_idx, (input, target) in enumerate(loader):
+            last_batch = batch_idx == last_idx
+            input = torch.cat(input, dim=0).to(device)
+            target = target.repeat(input.size(0)).to(device)
+            if args.channels_last:
+                input = input.contiguous(memory_format=torch.channels_last)
+
+            with amp_autocast():
+                output = model(input)
+                if isinstance(output, (tuple, list)):
+                    output = output[0]
+
+            acc1, acc5 = utils.accuracy(output, target, topk=(1, 5))
+
+            reference_output = output[output.size(0) // 2, ...]
+            mse = (output - reference_output).abs().mean()
+
+
+            if args.distributed:
+                acc1 = utils.reduce_tensor(acc1, args.world_size)
+                acc5 = utils.reduce_tensor(acc5, args.world_size)
+                mse = utils.reduce_tensor(mse, args.world_size)
+
+
+            if device.type == 'cuda':
+                torch.cuda.synchronize()
+
+            mse_m.update(mse.item(), 1)
+            top1_m.update(acc1.item(),1)
+            top5_m.update(acc5.item(), 1)
+
+            batch_time_m.update(time.time() - end)
+            end = time.time()
+            if utils.is_primary(args) and (last_batch or batch_idx % args.log_interval == 0):
+                log_name = 'Test ' + symmetry_name
+                _logger.info(
+                    f'{log_name}: [{batch_idx:>4d}/{last_idx}]  '
+                    f'Time: {batch_time_m.val:.3f} ({batch_time_m.avg:.3f})  '
+                    f'MSE: {mse_m.val:>7.3f} ({mse_m.avg:>7.3f})  '
+                    f'Acc@1: {top1_m.val:>7.3f} ({top1_m.avg:>7.3f})  '
+                    f'Acc@5: {top5_m.val:>7.3f} ({top5_m.avg:>7.3f})'
+                )
+
+    metrics = OrderedDict([(f'{symmetry_name}_mse', mse_m.avg), (f'{symmetry_name}_top1', top1_m.avg), (f'{symmetry_name}_top5', top5_m.avg)])
 
     return metrics
 
