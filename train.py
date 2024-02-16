@@ -1295,9 +1295,9 @@ def validate_symmetry(
             if device.type == 'cuda':
                 torch.cuda.synchronize()
 
-            mse_m.update(mse.item(), 1)
-            top1_m.update(acc1.item(),1)
-            top5_m.update(acc5.item(), 1)
+            mse_m.update(mse.item(), output.size(0))
+            top1_m.update(acc1.item(),output.size(0))
+            top5_m.update(acc5.item(), output.size(0))
 
             batch_time_m.update(time.time() - end)
             end = time.time()
