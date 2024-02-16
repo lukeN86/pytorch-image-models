@@ -1283,7 +1283,7 @@ def validate_symmetry(
             reference_output_index = (num_eval_points // 2) * batch_size
             reference_output = output[reference_output_index:(reference_output_index+batch_size), ...]
             reference_output = reference_output.repeat(num_eval_points, 1)
-            mse = (output - reference_output).abs().mean()
+            mse = ((output - reference_output) ** 2).mean()
 
 
             if args.distributed:
