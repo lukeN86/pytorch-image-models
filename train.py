@@ -944,6 +944,7 @@ def main():
                     _logger.info("Distributing BatchNorm running means and vars")
                 utils.distribute_bn(model, args.world_size, args.dist_bn == 'reduce')
 
+            ema_eval_metrics = None
             if loader_eval is not None:
                 eval_metrics = validate(
                     model,
@@ -965,7 +966,6 @@ def main():
                         amp_autocast=amp_autocast,
                         log_suffix=' (EMA)',
                     )
-                    eval_metrics = ema_eval_metrics
             else:
                 eval_metrics = None
 
@@ -976,6 +976,7 @@ def main():
                     epoch,
                     train_metrics,
                     eval_metrics,
+                    ema_eval_metrics,
                     symmetry_metrics,
                     filename=os.path.join(output_dir, 'summary.csv'),
                     lr=sum(lrs) / len(lrs),
@@ -983,7 +984,9 @@ def main():
                     log_wandb=args.log_wandb and has_wandb,
                 )
 
-            if eval_metrics is not None:
+            if ema_eval_metrics is not None:
+                latest_metric = ema_eval_metrics[eval_metric]
+            elif eval_metrics is not None:
                 latest_metric = eval_metrics[eval_metric]
             else:
                 latest_metric = train_metrics[eval_metric]
@@ -1000,6 +1003,7 @@ def main():
                 'epoch': epoch,
                 'train': train_metrics,
                 'validation': eval_metrics,
+                'ema_validation': ema_eval_metrics,
             })
 
     except KeyboardInterrupt:
