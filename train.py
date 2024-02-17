@@ -911,18 +911,6 @@ def main():
             elif args.distributed and hasattr(loader_train.sampler, 'set_epoch'):
                 loader_train.sampler.set_epoch(epoch)
 
-            if symmetries_eval is not None:
-                symmetry_metrics = validate_symmetry(
-                    'scale',
-                    model,
-                    symmetries_eval,
-                    args,
-                    amp_autocast=amp_autocast,
-                )
-            else:
-                symmetry_metrics = None
-
-
             train_metrics = train_one_epoch(
                 epoch,
                 model,
@@ -968,6 +956,19 @@ def main():
                     )
             else:
                 eval_metrics = None
+
+
+            if symmetries_eval is not None:
+                symmetry_metrics = validate_symmetry(
+                    'scale',
+                    model,
+                    symmetries_eval,
+                    args,
+                    amp_autocast=amp_autocast,
+                )
+            else:
+                symmetry_metrics = None
+
 
             if output_dir is not None:
                 lrs = [param_group['lr'] for param_group in optimizer.param_groups]
