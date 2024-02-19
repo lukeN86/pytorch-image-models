@@ -31,6 +31,7 @@ import torchvision.utils
 import yaml
 from torch.nn.parallel import DistributedDataParallel as NativeDDP
 
+
 from timm import utils
 from timm.data import create_dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
 from timm.layers import convert_splitbn_model, convert_sync_batchnorm, set_fast_norm
@@ -41,8 +42,9 @@ from timm.scheduler import create_scheduler_v2, scheduler_kwargs
 from timm.data.partial_dataset import PartialDataset
 from timm.utils import ApexScaler, NativeScaler
 
+from symmetries.symmetry_factory import create_symmetry
 from symmetry_transform import SymmetryTransform
-from symmetries.scale_symmetry import ScaleSymmetry
+
 
 try:
     from apex import amp
@@ -392,6 +394,8 @@ group.add_argument('--find-unused-parameters', action='store_true', default=Fals
                    help='Find unused parameters in DDP')
 group.add_argument('--use-pair-sampling', action='store_true', default=False, help='Always include the same image twice in the training set')
 group.add_argument('--eval-symmetries', default='', type=str, nargs='+', metavar='EVAL_METRIC', help='Name(s) of symmetries to evaluate')
+group.add_argument('--eval-symmetries-interval', default=5, type=int, metavar='EVAL_METRIC', help='How freqyently evaluate symmetries')
+
 
 
 
@@ -761,43 +765,45 @@ def main():
             use_prefetcher=args.prefetcher,
         )
 
-    symmetries_eval = None
+    symmetries_eval = {}
     if args.eval_symmetries:
-        dataset_eval_symmetries = create_dataset(
-            args.dataset,
-            root=args.data_dir,
-            split=args.val_split,
-            is_training=False,
-            class_map=args.class_map,
-            download=args.dataset_download,
-            batch_size=args.batch_size,
-            input_img_mode=input_img_mode,
-            input_key=args.input_key,
-            target_key=args.target_key,
-            num_samples=args.val_num_samples,
-        )
-
         num_eval_points = 11
         symmetries_eval_batch_size = (args.validation_batch_size or args.batch_size) // num_eval_points
 
-        symmetries_eval = create_loader(
-            dataset_eval_symmetries,
-            input_size=data_config['input_size'],
-            batch_size=symmetries_eval_batch_size,
-            is_training=False,
-            interpolation=data_config['interpolation'],
-            mean=data_config['mean'],
-            std=data_config['std'],
-            num_workers=args.workers,
-            distributed=args.distributed,
-            crop_pct=data_config['crop_pct'],
-            pin_memory=args.pin_mem,
-            device=device,
-            use_prefetcher=False
-        )
+        for symmetry_name in args.eval_symmetries:
+            symmetry = create_symmetry(symmetry_name)
+            dataset_eval_symmetries = create_dataset(
+                args.dataset,
+                root=args.data_dir,
+                split=args.val_split,
+                is_training=False,
+                class_map=args.class_map,
+                download=args.dataset_download,
+                batch_size=args.batch_size,
+                input_img_mode=input_img_mode,
+                input_key=args.input_key,
+                target_key=args.target_key,
+                num_samples=args.val_num_samples,
+            )
 
-        assert dataset_eval_symmetries.transform is not None
-        dataset_eval_symmetries.transform = SymmetryTransform(ScaleSymmetry(), dataset_eval_symmetries.transform, num_eval_points=num_eval_points)
+            symmetries_eval[symmetry_name] = create_loader(
+                dataset_eval_symmetries,
+                input_size=data_config['input_size'],
+                batch_size=symmetries_eval_batch_size,
+                is_training=False,
+                interpolation=data_config['interpolation'],
+                mean=data_config['mean'],
+                std=data_config['std'],
+                num_workers=args.workers,
+                distributed=args.distributed,
+                crop_pct=data_config['crop_pct'],
+                pin_memory=args.pin_mem,
+                device=device,
+                use_prefetcher=False
+            )
+
+            assert dataset_eval_symmetries.transform is not None
+            dataset_eval_symmetries.transform = SymmetryTransform(symmetry, dataset_eval_symmetries.transform, num_eval_points=num_eval_points)
 
 
 
@@ -911,61 +917,65 @@ def main():
             elif args.distributed and hasattr(loader_train.sampler, 'set_epoch'):
                 loader_train.sampler.set_epoch(epoch)
 
-            train_metrics = train_one_epoch(
-                epoch,
-                model,
-                loader_train,
-                optimizer,
-                train_loss_fn,
-                args,
-                lr_scheduler=lr_scheduler,
-                saver=saver,
-                output_dir=output_dir,
-                amp_autocast=amp_autocast,
-                loss_scaler=loss_scaler,
-                model_ema=model_ema,
-                mixup_fn=mixup_fn,
-            )
+            # train_metrics = train_one_epoch(
+            #     epoch,
+            #     model,
+            #     loader_train,
+            #     optimizer,
+            #     train_loss_fn,
+            #     args,
+            #     lr_scheduler=lr_scheduler,
+            #     saver=saver,
+            #     output_dir=output_dir,
+            #     amp_autocast=amp_autocast,
+            #     loss_scaler=loss_scaler,
+            #     model_ema=model_ema,
+            #     mixup_fn=mixup_fn,
+            # )
+            #
+            # if args.distributed and args.dist_bn in ('broadcast', 'reduce'):
+            #     if utils.is_primary(args):
+            #         _logger.info("Distributing BatchNorm running means and vars")
+            #     utils.distribute_bn(model, args.world_size, args.dist_bn == 'reduce')
+            #
+            # ema_eval_metrics = None
+            # if loader_eval is not None:
+            #     eval_metrics = validate(
+            #         model,
+            #         loader_eval,
+            #         validate_loss_fn,
+            #         args,
+            #         amp_autocast=amp_autocast,
+            #     )
+            #
+            #     if model_ema is not None and not args.model_ema_force_cpu:
+            #         if args.distributed and args.dist_bn in ('broadcast', 'reduce'):
+            #             utils.distribute_bn(model_ema, args.world_size, args.dist_bn == 'reduce')
+            #
+            #         ema_eval_metrics = validate(
+            #             model_ema.module,
+            #             loader_eval,
+            #             validate_loss_fn,
+            #             args,
+            #             amp_autocast=amp_autocast,
+            #             log_suffix=' (EMA)',
+            #         )
+            # else:
+            #     eval_metrics = None
 
-            if args.distributed and args.dist_bn in ('broadcast', 'reduce'):
-                if utils.is_primary(args):
-                    _logger.info("Distributing BatchNorm running means and vars")
-                utils.distribute_bn(model, args.world_size, args.dist_bn == 'reduce')
 
-            ema_eval_metrics = None
-            if loader_eval is not None:
-                eval_metrics = validate(
-                    model,
-                    loader_eval,
-                    validate_loss_fn,
-                    args,
-                    amp_autocast=amp_autocast,
-                )
-
-                if model_ema is not None and not args.model_ema_force_cpu:
-                    if args.distributed and args.dist_bn in ('broadcast', 'reduce'):
-                        utils.distribute_bn(model_ema, args.world_size, args.dist_bn == 'reduce')
-
-                    ema_eval_metrics = validate(
-                        model_ema.module,
-                        loader_eval,
-                        validate_loss_fn,
+            if len(symmetries_eval) > 0 and (epoch % args.eval_symmetries_interval) == 0:
+                symmetry_metrics = {}
+                for symmetry_name, symmetry_data_loader in symmetries_eval.items():
+                    metrics = validate_symmetry(
+                        symmetry_name,
+                        model,
+                        symmetry_data_loader,
                         args,
                         amp_autocast=amp_autocast,
-                        log_suffix=' (EMA)',
                     )
-            else:
-                eval_metrics = None
 
-
-            if symmetries_eval is not None:
-                symmetry_metrics = validate_symmetry(
-                    'scale',
-                    model,
-                    symmetries_eval,
-                    args,
-                    amp_autocast=amp_autocast,
-                )
+                    symmetry_metrics.update([(k, v) for k, v in metrics.items()])
             else:
                 symmetry_metrics = None
 
