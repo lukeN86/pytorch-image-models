@@ -9,12 +9,18 @@ class SymmetryLoss(nn.Module):
         self.alpha = alpha
 
     def __call__(self, output, target):
-        assert (output.shape[0] % 2) == 0
 
-        loss = self.cross_entropy_loss(output, target)
+        assert isinstance(output, dict)
+        model_output = output['model_output']
+        assert (model_output.shape[0] % 2) == 0
 
-        output1 = output[0::2, ...]
-        output2 = output[1::2, ...]
+        auxiliary_output = output['auxiliary_output']
+        assert (auxiliary_output.shape[0] % 2) == 0
+
+        loss = self.cross_entropy_loss(model_output, target)
+
+        output1 = auxiliary_output[0::2, ...]
+        output2 = auxiliary_output[1::2, ...]
 
         target1 = target[0::2, ...]
         target2 = target[1::2, ...]

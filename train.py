@@ -44,6 +44,7 @@ from timm.utils import ApexScaler, NativeScaler
 
 from symmetries.symmetry_factory import create_symmetry
 from symmetry_transform import SymmetryTransform
+from symmetries.auxiliary_output_model import AuxiliaryOutputModel
 
 
 try:
@@ -324,6 +325,8 @@ group.add_argument('--drop-block', type=float, default=None, metavar='PCT',
                    help='Drop block rate (default: None)')
 group.add_argument('--symmetry-loss', action='store_true', default=False,
                    help='Symmetry loss. Use with `--use-pair-sampling`.')
+group.add_argument('--symmetry-loss-layer', type=str, default=None,
+                   help='Symmetry loss layer name. Use with `--symmetry-loss`.')
 
 # Batch norm parameters (only works with gen_efficientnet based models currently)
 group = parser.add_argument_group('Batch norm parameters', 'Only works with gen_efficientnet based models currently.')
@@ -494,6 +497,11 @@ def main():
         **factory_kwargs,
         **args.model_kwargs,
     )
+
+    if args.symmetry_loss:
+        assert len(args.symmetry_loss_layer) > 0
+        model = AuxiliaryOutputModel(model, args.symmetry_loss_layer)
+
     if args.head_init_scale is not None:
         with torch.no_grad():
             model.get_classifier().weight.mul_(args.head_init_scale)
