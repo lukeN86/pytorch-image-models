@@ -327,6 +327,10 @@ group.add_argument('--symmetry-loss', action='store_true', default=False,
                    help='Symmetry loss. Use with `--use-pair-sampling`.')
 group.add_argument('--symmetry-loss-layer', type=str, default=None,
                    help='Symmetry loss layer name. Use with `--symmetry-loss`.')
+group.add_argument('--symmetry-regularization', type=str, default='l2',
+                   help='Symmetry regularization loss. Use with `--symmetry-loss`.')
+group.add_argument('--symmetry-regularization-alpha', type=float, default=1.0,
+                   help='Symmetry regularization loss weight. Use with `--symmetry-loss`.')
 
 # Batch norm parameters (only works with gen_efficientnet based models currently)
 group = parser.add_argument_group('Batch norm parameters', 'Only works with gen_efficientnet based models currently.')
@@ -845,7 +849,7 @@ def main():
         train_loss_fn = nn.CrossEntropyLoss()
 
     if args.symmetry_loss:
-        train_loss_fn = SymmetryLoss(train_loss_fn)
+        train_loss_fn = SymmetryLoss(train_loss_fn, args.symmetry_regularization, args.symmetry_regularization_alpha)
 
     train_loss_fn = train_loss_fn.to(device=device)
     validate_loss_fn = nn.CrossEntropyLoss().to(device=device)
