@@ -22,6 +22,7 @@ from .distributed_sampler import OrderedDistributedSampler, RepeatAugSampler, Ra
 from .random_erasing import RandomErasing
 from .mixup import FastCollateMixup
 from .transforms_factory import create_transform
+from .parametrized_transforms import convert_to_parametrized_transform
 
 _logger = logging.getLogger(__name__)
 
@@ -317,6 +318,7 @@ def create_loader(
     if use_pair_sampling and is_training:
         assert (batch_size % 2) == 0, "Batch size must be even for pair sampling."
         sampler = RandomPairsDistributedSampler(dataset)
+        dataset.transform = convert_to_parametrized_transform(dataset.transform)
     elif distributed and not isinstance(dataset, torch.utils.data.IterableDataset):
         if is_training:
             if num_aug_repeats:
