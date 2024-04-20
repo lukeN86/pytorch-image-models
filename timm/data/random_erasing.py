@@ -59,6 +59,8 @@ class RandomErasing:
         self.probability = probability
         self.min_area = min_area
         self.max_area = max_area
+        self.min_aspect = min_aspect
+        self.max_aspect = max_aspect
         max_aspect = max_aspect or 1 / min_aspect
         self.log_aspect_ratio = (math.log(min_aspect), math.log(max_aspect))
         self.min_count = min_count

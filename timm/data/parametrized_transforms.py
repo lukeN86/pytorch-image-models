@@ -1,4 +1,6 @@
 from torchvision import transforms
+
+from timm.data.random_erasing import RandomErasing
 from timm.data.transforms import RandomResizedCropAndInterpolation, ToNumpy, interp_mode_to_str
 from timm.data.auto_augment import  RandAugment, _HPARAMS_DEFAULT, NAME_TO_OP, LEVEL_TO_ARG, _FILL, _RANDOM_INTERPOLATION, _LEVEL_DENOM
 import random
@@ -11,13 +13,19 @@ def convert_to_parametrized_transform(transform):
     if isinstance(transform, transforms.Compose):
         return ComposeParametrized([convert_to_parametrized_transform(t) for t in transform.transforms])
     elif isinstance(transform, RandomResizedCropAndInterpolation):
-        return RandomResizedCropAndInterpolationParametrized(transform.size, transform.scale, transform.ratio, 'random')
+        return RandomResizedCropAndInterpolationParametrized(transform.size, transform.scale, transform.ratio, _RANDOM_INTERPOLATION)
     elif isinstance(transform, transforms.RandomHorizontalFlip):
         return RandomHorizontalFlipParametrized(transform.p)
     elif isinstance(transform, RandAugment):
         return RandAugmentParametrized([AugmentOpParametrized(op.name, op.prob, op.magnitude, op.hparams) for op in transform.ops], transform.num_layers, transform.choice_weights)
     elif isinstance(transform, ToNumpy):
         return ToNumpyParametrized()
+    elif isinstance(transform, transforms.ToTensor):
+        return ToTensorParametrized()
+    elif isinstance(transform, transforms.Normalize):
+        return NormalizeParametrized(transform.mean, transform.std, transform.inplace)
+    elif isinstance(transform, RandomErasing):
+        return RandomErasingParametrized(transform.probability, transform.min_area, transform.max_area, transform.min_aspect, transform.max_aspect, transform.mode, transform.min_count, transform.max_count, transform.num_splits, transform.device)
 
     assert False, 'Unknown transform {}'.format(type(transform))
 
@@ -29,10 +37,10 @@ class ComposeParametrized:
     def __init__(self, transforms):
         self.transforms = transforms
 
-    def __call__(self, img):
+    def __call__(self, img, grid):
         for t in self.transforms:
-            img = t(img)
-        return img
+            img, grid = t(img, grid)
+        return img, grid
 
     def __repr__(self) -> str:
         format_string = self.__class__.__name__ + "("
@@ -45,33 +53,90 @@ class ComposeParametrized:
 
 class ToNumpyParametrized:
 
-    def __call__(self, pil_img):
+    def __call__(self, pil_img, grid):
         np_img = np.array(pil_img, dtype=np.uint8)
         if np_img.ndim < 3:
             np_img = np.expand_dims(np_img, axis=-1)
         np_img = np.rollaxis(np_img, 2)  # HWC to CHW
-        return np_img
+        return np_img, grid
 
 
-class RandomResizedCropAndInterpolationParametrized(RandomResizedCropAndInterpolation):
+class ToTensorParametrized:
+    """Convert a PIL Image or ndarray to tensor and scale the values accordingly. """
+
+    def __call__(self, pic, grid):
+        return F.to_tensor(pic), grid
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}()"
+
+
+class NormalizeParametrized(torch.nn.Module):
+    """Normalize a tensor image with mean and standard deviation.  """
+
+    def __init__(self, mean, std, inplace=False):
+        super().__init__()
+        self.mean = mean
+        self.std = std
+        self.inplace = inplace
+
+    def forward(self, tensor, grid):
+        return F.normalize(tensor, self.mean, self.std, self.inplace), grid
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(mean={self.mean}, std={self.std})"
+
+
+
+class RandomErasingParametrized(RandomErasing):
+    """ Randomly selects a rectangle region in an image and erases its pixels.  """
+
+    def __init__(
+            self,
+            probability=0.5,
+            min_area=0.02,
+            max_area=1/3,
+            min_aspect=0.3,
+            max_aspect=None,
+            mode='const',
+            min_count=1,
+            max_count=None,
+            num_splits=0,
+            device='cuda',
+    ):
+        super().__init__(probability, min_area, max_area, min_aspect, max_aspect, mode, min_count, max_count, num_splits, device)
+
+    def __call__(self, input, grid):
+        return super().__call__(input), grid
+
+    def __repr__(self):
+        # NOTE simplified state for repr
+        fs = self.__class__.__name__ + f'(p={self.probability}, mode={self.mode}'
+        fs += f', count=({self.min_count}, {self.max_count}))'
+        return fs
+
+
+class RandomResizedCropAndInterpolationParametrized:
     """ Crop the given PIL Image to random size and aspect ratio with random interpolation. """
 
     def __init__(self, size, scale, ratio, interpolation):
-        super().__init__(size, scale, ratio, interpolation)
-    def __call__(self, img):
-        """
-        Args:
-            img (PIL Image): Image to be cropped and resized.
+        self.size = size
+        self.scale = scale
+        self.ratio = ratio
+        self.interpolation = interpolation
 
-        Returns:
-            PIL Image: Randomly cropped and resized image.
-        """
-        i, j, h, w = self.get_params(img, self.scale, self.ratio)
+    def __call__(self, img, grid):
+
+        i, j, h, w = RandomResizedCropAndInterpolation.get_params(img, self.scale, self.ratio)
         if isinstance(self.interpolation, (tuple, list)):
             interpolation = random.choice(self.interpolation)
         else:
             interpolation = self.interpolation
-        return F.resized_crop(img, i, j, h, w, self.size, interpolation)
+        cropped_img = F.resized_crop(img, i, j, h, w, self.size, interpolation)
+        cropped_grid = F.resized_crop(grid, i, j, h, w, self.size, interpolation, antialias=True)
+        return cropped_img, cropped_grid
+
+
 
     def __repr__(self):
         if isinstance(self.interpolation, (tuple, list)):
@@ -92,17 +157,11 @@ class RandomHorizontalFlipParametrized(torch.nn.Module):
         super().__init__()
         self.p = p
 
-    def forward(self, img):
-        """
-        Args:
-            img (PIL Image or Tensor): Image to be flipped.
-
-        Returns:
-            PIL Image or Tensor: Randomly flipped image.
-        """
+    def forward(self, img, grid):
         if torch.rand(1) < self.p:
-            return F.hflip(img)
-        return img
+            return F.hflip(img), F.hflip(grid)
+
+        return img, grid
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(p={self.p})"
@@ -115,7 +174,7 @@ class RandAugmentParametrized:
         self.num_layers = num_layers
         self.choice_weights = choice_weights
 
-    def __call__(self, img):
+    def __call__(self, img, grid):
         # no replacement when using weighted choice
         ops = np.random.choice(
             self.ops,
@@ -123,9 +182,16 @@ class RandAugmentParametrized:
             replace=self.choice_weights is None,
             p=self.choice_weights,
         )
+
+        # The RandAugment operations only work with PIL images, have to convert the tensor to an array of float32 single channel images
+        grid_pil_array = [F.to_pil_image(grid[i, 0, :, :].numpy().astype(np.float32), mode='F') for i in range(grid.size(0))]
+
         for op in ops:
-            img = op(img)
-        return img
+            img, grid = op(img, grid_pil_array)
+
+        grid = torch.stack([F.to_tensor(g) for g in grid_pil_array], dim=0)
+
+        return img, grid
 
     def __repr__(self):
         fs = self.__class__.__name__ + f'(n={self.num_layers}, ops='
@@ -135,12 +201,25 @@ class RandAugmentParametrized:
         return fs
 
 
+# List of operations which modify coordinates
+COORDINATE_OPS = [
+    'Rotate',
+    'ShearX',
+    'ShearY',
+    'TranslateX',
+    'TranslateY',
+    'TranslateXRel',
+    'TranslateYRel',
+]
+
+
 class AugmentOpParametrized:
 
     def __init__(self, name, prob=0.5, magnitude=10, hparams=None):
         hparams = hparams or _HPARAMS_DEFAULT
         self.name = name
         self.aug_fn = NAME_TO_OP[name]
+        self.grid_aug_fn = NAME_TO_OP[name] if name in COORDINATE_OPS else None
         self.level_fn = LEVEL_TO_ARG[name]
         self.prob = prob
         self.magnitude = magnitude
@@ -158,9 +237,9 @@ class AugmentOpParametrized:
         self.magnitude_std = self.hparams.get('magnitude_std', 0)
         self.magnitude_max = self.hparams.get('magnitude_max', None)
 
-    def __call__(self, img):
+    def __call__(self, img, grid_pil_array):
         if self.prob < 1.0 and random.random() > self.prob:
-            return img
+            return img, grid_pil_array
         magnitude = self.magnitude
         if self.magnitude_std > 0:
             # magnitude randomization enabled
@@ -174,7 +253,14 @@ class AugmentOpParametrized:
         upper_bound = self.magnitude_max or _LEVEL_DENOM
         magnitude = max(0., min(magnitude, upper_bound))
         level_args = self.level_fn(magnitude, self.hparams) if self.level_fn is not None else tuple()
-        return self.aug_fn(img, *level_args, **self.kwargs)
+
+        if self.grid_aug_fn is not None:
+            # Change shape of the image and the coordinates grid (e.g. TranslateX)
+            return self.aug_fn(img, *level_args, **self.kwargs), [self.grid_aug_fn(g, *level_args) for g in grid_pil_array]
+        else:
+            # This operation does not change shape of the image (e.g. AutoContrast)
+            return self.aug_fn(img, *level_args, **self.kwargs), grid_pil_array
+
 
     def __repr__(self):
         fs = self.__class__.__name__ + f'(name={self.name}, p={self.prob}'

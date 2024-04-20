@@ -1085,7 +1085,7 @@ def train_one_epoch(
     data_start_time = update_start_time = time.time()
     optimizer.zero_grad()
     update_sample_count = 0
-    for batch_idx, (input, target) in enumerate(loader):
+    for batch_idx, batch_data in enumerate(loader):
         last_batch = batch_idx == last_batch_idx
         need_update = last_batch or (batch_idx + 1) % accum_steps == 0
         update_idx = batch_idx // accum_steps
@@ -1093,9 +1093,15 @@ def train_one_epoch(
             accum_steps = last_accum_steps
 
         if not args.prefetcher:
-            input, target = input.to(device), target.to(device)
+            input, target = batch_data[0].to(device), batch_data[1].to(device)
+            if len(batch_data) == 3:
+                grid = batch_data[2].to(device)
+
             if mixup_fn is not None:
                 input, target = mixup_fn(input, target)
+        else:
+            input, target = batch_data
+
         if args.channels_last:
             input = input.contiguous(memory_format=torch.channels_last)
 

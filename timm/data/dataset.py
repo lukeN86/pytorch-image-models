@@ -30,6 +30,7 @@ class ImageDataset(data.Dataset):
             input_img_mode='RGB',
             transform=None,
             target_transform=None,
+            grid_generator=None
     ):
         if reader is None or isinstance(reader, str):
             reader = create_reader(
@@ -44,6 +45,7 @@ class ImageDataset(data.Dataset):
         self.transform = transform
         self.target_transform = target_transform
         self._consecutive_errors = 0
+        self.grid_generator = grid_generator
 
     def __getitem__(self, index):
         img, target = self.reader[index]
@@ -61,15 +63,24 @@ class ImageDataset(data.Dataset):
 
         if self.input_img_mode and not self.load_bytes:
             img = img.convert(self.input_img_mode)
-        if self.transform is not None:
-            img = self.transform(img)
+
+        if self.grid_generator is not None:
+            grid = self.grid_generator.create_grid_from_image(img)
+            if self.transform is not None:
+                img, grid = self.transform(img, grid)
+        else:
+            if self.transform is not None:
+                img = self.transform(img)
 
         if target is None:
             target = -1
         elif self.target_transform is not None:
             target = self.target_transform(target)
 
-        return img, target
+        if self.grid_generator is not None:
+            return img, target, grid
+        else:
+            return img, target
 
     def __len__(self):
         return len(self.reader)

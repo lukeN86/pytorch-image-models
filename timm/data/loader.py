@@ -23,6 +23,7 @@ from .random_erasing import RandomErasing
 from .mixup import FastCollateMixup
 from .transforms_factory import create_transform
 from .parametrized_transforms import convert_to_parametrized_transform
+from .grid_generator import GridGenerator
 
 _logger = logging.getLogger(__name__)
 
@@ -319,6 +320,7 @@ def create_loader(
         assert (batch_size % 2) == 0, "Batch size must be even for pair sampling."
         sampler = RandomPairsDistributedSampler(dataset)
         dataset.transform = convert_to_parametrized_transform(dataset.transform)
+        dataset.grid_generator = GridGenerator(grid_size=8)
     elif distributed and not isinstance(dataset, torch.utils.data.IterableDataset):
         if is_training:
             if num_aug_repeats:
