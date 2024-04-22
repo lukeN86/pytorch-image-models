@@ -6,6 +6,7 @@ import io
 import logging
 from typing import Optional
 
+import numpy as np
 import torch
 import torch.utils.data as data
 from PIL import Image
@@ -61,6 +62,8 @@ class ImageDataset(data.Dataset):
                 raise e
         self._consecutive_errors = 0
 
+        # img_old = np.array(img).copy()
+
         if self.input_img_mode and not self.load_bytes:
             img = img.convert(self.input_img_mode)
 
@@ -68,6 +71,7 @@ class ImageDataset(data.Dataset):
             grid = self.grid_generator.create_grid_from_image(img)
             if self.transform is not None:
                 img, grid = self.transform(img, grid)
+                # tst = grid[0, 0, :, :].numpy()
         else:
             if self.transform is not None:
                 img = self.transform(img)

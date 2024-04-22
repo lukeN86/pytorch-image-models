@@ -187,7 +187,7 @@ class RandAugmentParametrized:
         grid_pil_array = [F.to_pil_image(grid[i, 0, :, :].numpy().astype(np.float32), mode='F') for i in range(grid.size(0))]
 
         for op in ops:
-            img, grid = op(img, grid_pil_array)
+            img, grid_pil_array = op(img, grid_pil_array)
 
         grid = torch.stack([F.to_tensor(g) for g in grid_pil_array], dim=0)
 
