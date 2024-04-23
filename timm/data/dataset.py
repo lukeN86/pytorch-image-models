@@ -13,6 +13,8 @@ from PIL import Image
 
 from .readers import create_reader
 
+import torch.nn.functional as F
+
 _logger = logging.getLogger(__name__)
 
 
@@ -62,16 +64,16 @@ class ImageDataset(data.Dataset):
                 raise e
         self._consecutive_errors = 0
 
-        # img_old = np.array(img).copy()
-
+        img_size = img.size
         if self.input_img_mode and not self.load_bytes:
             img = img.convert(self.input_img_mode)
 
         if self.grid_generator is not None:
-            grid = self.grid_generator.create_grid_from_image(img)
+            coordinates_grid = self.grid_generator.create_coordinates_grid(img)
             if self.transform is not None:
-                img, grid = self.transform(img, grid)
-                # tst = grid[0, 0, :, :].numpy()
+                img, coordinates_grid = self.transform(img, coordinates_grid)
+                inv_augmentation_transform = self.grid_generator.create_inverse_sampling_grid(coordinates_grid, img_size)
+
         else:
             if self.transform is not None:
                 img = self.transform(img)
@@ -82,7 +84,7 @@ class ImageDataset(data.Dataset):
             target = self.target_transform(target)
 
         if self.grid_generator is not None:
-            return img, target, grid
+            return img, target, inv_augmentation_transform
         else:
             return img, target
 
