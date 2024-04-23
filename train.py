@@ -331,6 +331,8 @@ group.add_argument('--symmetry-regularization', type=str, default='l2',
                    help='Symmetry regularization loss. Use with `--symmetry-loss`.')
 group.add_argument('--symmetry-regularization-alpha', type=float, default=1.0,
                    help='Symmetry regularization loss weight. Use with `--symmetry-loss`.')
+group.add_argument('--symmetry-transformation', type=str, default=None,
+                   help='Symmetry transformation. Use with `--symmetry-loss`.')
 
 # Batch norm parameters (only works with gen_efficientnet based models currently)
 group = parser.add_argument_group('Batch norm parameters', 'Only works with gen_efficientnet based models currently.')
@@ -849,7 +851,7 @@ def main():
         train_loss_fn = nn.CrossEntropyLoss()
 
     if args.symmetry_loss:
-        train_loss_fn = SymmetryLoss(train_loss_fn, args.symmetry_regularization, args.symmetry_regularization_alpha)
+        train_loss_fn = SymmetryLoss(train_loss_fn, args.symmetry_regularization, args.symmetry_regularization_alpha, args.symmetry_transformation)
 
     train_loss_fn = train_loss_fn.to(device=device)
     validate_loss_fn = nn.CrossEntropyLoss().to(device=device)
@@ -1094,13 +1096,16 @@ def train_one_epoch(
 
         if not args.prefetcher:
             input, target = batch_data[0].to(device), batch_data[1].to(device)
-            if len(batch_data) == 3:
-                grid = batch_data[2].to(device)
-
             if mixup_fn is not None:
                 input, target = mixup_fn(input, target)
+
+            if len(batch_data) == 3:
+                labels = {'target': target, 'inv_augmentation_transform': batch_data[2].to(device)}
+            else:
+                labels = target
+
         else:
-            input, target = batch_data
+            input, labels = batch_data
 
         if args.channels_last:
             input = input.contiguous(memory_format=torch.channels_last)
@@ -1111,7 +1116,7 @@ def train_one_epoch(
         def _forward():
             with amp_autocast():
                 output = model(input)
-                loss = loss_fn(output, target)
+                loss = loss_fn(output, labels)
             if accum_steps > 1:
                 loss /= accum_steps
             return loss

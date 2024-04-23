@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 class SymmetryLoss(nn.Module):
 
-    def __init__(self, cross_entropy_loss, symmetry_regularization='l2', alpha=1.0):
+    def __init__(self, cross_entropy_loss, symmetry_regularization='l2', alpha=1.0, symmetry_transformation=None):
         super().__init__()
         self.cross_entropy_loss = cross_entropy_loss
 
@@ -16,8 +17,9 @@ class SymmetryLoss(nn.Module):
             assert False, 'Unknown symmetry regularization'
 
         self.alpha = alpha
+        self.symmetry_transformation=symmetry_transformation
 
-    def __call__(self, output, target):
+    def __call__(self, output, labels):
 
         assert isinstance(output, dict)
         model_output = output['model_output']
@@ -26,7 +28,28 @@ class SymmetryLoss(nn.Module):
         auxiliary_output = output['auxiliary_output']
         assert (auxiliary_output.shape[0] % 2) == 0
 
+        if isinstance(labels, dict):
+            target = labels['target']
+        else:
+            assert isinstance(labels, torch.Tensor)
+            target = labels
+
         loss = self.cross_entropy_loss(model_output, target)
+
+        symmetry_loss_mask = None
+        if self.symmetry_transformation is not None:
+            if self.symmetry_transformation == 'augmentation_equivariance':
+                inv_augmentation_transform = labels['inv_augmentation_transform']
+
+                symmetry_loss_mask1 = inv_augmentation_transform[0::2, :, :, 0] > -100
+                symmetry_loss_mask2 = inv_augmentation_transform[1::2, :, :, 0] > -100
+
+                symmetry_loss_mask = torch.logical_and(symmetry_loss_mask1, symmetry_loss_mask2)
+
+
+                auxiliary_output = F.grid_sample(auxiliary_output, inv_augmentation_transform, align_corners=True)
+            else:
+                assert False, 'Unknown symmetry transformation {}'.format(self.symmetry_transformation)
 
         output1 = auxiliary_output[0::2, ...]
         output2 = auxiliary_output[1::2, ...]
@@ -37,7 +60,11 @@ class SymmetryLoss(nn.Module):
         assert diff < 1e-6, 'Targets need to be the same'
 
         symmetry_loss = self.symmetry_regularization_loss(output1, output2)
-        symmetry_loss = symmetry_loss.mean()
+
+        if symmetry_loss_mask is not None:
+            symmetry_loss = symmetry_loss[symmetry_loss_mask[:, None, :, :].repeat(1, symmetry_loss.size(1), 1, 1)].mean()
+        else:
+            symmetry_loss = symmetry_loss.mean()
 
         loss += self.alpha * symmetry_loss
 
