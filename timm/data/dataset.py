@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import torch.utils.data as data
 from PIL import Image
+import time
 
 from .readers import create_reader
 
@@ -84,7 +85,7 @@ class ImageDataset(data.Dataset):
             target = self.target_transform(target)
 
         if self.grid_generator is not None:
-            return img, target, inv_augmentation_transform
+            return img, {'labels': target, 'inv_augmentation_transform': inv_augmentation_transform}
         else:
             return img, target
 

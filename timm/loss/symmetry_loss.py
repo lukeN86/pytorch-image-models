@@ -19,7 +19,7 @@ class SymmetryLoss(nn.Module):
         self.alpha = alpha
         self.symmetry_transformation=symmetry_transformation
 
-    def __call__(self, output, labels):
+    def __call__(self, output, target):
 
         assert isinstance(output, dict)
         model_output = output['model_output']
@@ -28,18 +28,18 @@ class SymmetryLoss(nn.Module):
         auxiliary_output = output['auxiliary_output']
         assert (auxiliary_output.shape[0] % 2) == 0
 
-        if isinstance(labels, dict):
-            target = labels['target']
+        if isinstance(target, dict):
+            labels = target['labels']
         else:
-            assert isinstance(labels, torch.Tensor)
-            target = labels
+            assert isinstance(target, torch.Tensor)
+            labels = target
 
-        loss = self.cross_entropy_loss(model_output, target)
+        loss = self.cross_entropy_loss(model_output, labels)
 
         symmetry_loss_mask = None
         if self.symmetry_transformation is not None:
             if self.symmetry_transformation == 'augmentation_equivariance':
-                inv_augmentation_transform = labels['inv_augmentation_transform']
+                inv_augmentation_transform = target['inv_augmentation_transform']
 
                 symmetry_loss_mask1 = inv_augmentation_transform[0::2, :, :, 0] > -100
                 symmetry_loss_mask2 = inv_augmentation_transform[1::2, :, :, 0] > -100
@@ -54,9 +54,9 @@ class SymmetryLoss(nn.Module):
         output1 = auxiliary_output[0::2, ...]
         output2 = auxiliary_output[1::2, ...]
 
-        target1 = target[0::2, ...]
-        target2 = target[1::2, ...]
-        diff = (target1 - target2).abs().flatten().sum()
+        labels1 = labels[0::2, ...]
+        labels2 = labels[1::2, ...]
+        diff = (labels1 - labels2).abs().flatten().sum()
         assert diff < 1e-6, 'Targets need to be the same'
 
         symmetry_loss = self.symmetry_regularization_loss(output1, output2)

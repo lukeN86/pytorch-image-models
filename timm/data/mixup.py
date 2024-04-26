@@ -309,8 +309,26 @@ class FastCollateMixup(Mixup):
             lam = self._mix_pair_collate(output, batch)
         else:
             lam = self._mix_batch_collate(output, batch)
-        target = torch.tensor([b[1] for b in batch], dtype=torch.int64)
-        target = mixup_target(target, self.num_classes, lam, self.label_smoothing)
-        target = target[:batch_size]
-        return output, target
+        if isinstance(batch[0][1], dict):
+            target = torch.tensor([b[1]['labels'] for b in batch], dtype=torch.int64)
+            target = mixup_target(target, self.num_classes, lam, self.label_smoothing)
+            target = target[:batch_size]
+
+            target_dict = {'labels': target}
+
+            for key in batch[0][1].keys():
+                if key == 'labels':
+                    continue
+
+                target_dict[key] = torch.stack([batch[i][1][key] for i in range(batch_size)], dim=0)
+
+            return output, target_dict
+
+
+        else:
+            target = torch.tensor([b[1] for b in batch], dtype=torch.int64)
+            target = mixup_target(target, self.num_classes, lam, self.label_smoothing)
+            target = target[:batch_size]
+
+            return output, target
 

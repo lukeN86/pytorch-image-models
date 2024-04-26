@@ -130,7 +130,7 @@ class PrefetchLoader:
 
             with stream_context():
                 next_input = next_input.to(device=self.device, non_blocking=True)
-                next_target = next_target.to(device=self.device, non_blocking=True)
+                next_target = {k: v.to(device=self.device, non_blocking=True) for k, v in next_target.items()} if isinstance(next_target, dict) else next_target.to(device=self.device, non_blocking=True)
                 next_input = next_input.to(self.img_dtype).sub_(self.mean).div_(self.std)
                 if self.random_erasing is not None:
                     next_input = self.random_erasing(next_input)
