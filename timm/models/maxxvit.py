@@ -1335,7 +1335,8 @@ def _rw_max_cfg(
         rel_pos_type='bias',
         rel_pos_dim=512,
         no_grid_attn=False,
-        block_type='mbconv'
+        block_type='mbconv',
+        norm_eps=None
 ):
     # 'RW' timm variant models were created and trained before seeing https://github.com/google-research/maxvit
     # Differences of initial timm models:
@@ -1353,6 +1354,7 @@ def _rw_max_cfg(
             attn_ratio=conv_attn_ratio,
             act_layer='silu',
             norm_layer=conv_norm_layer,
+            norm_eps=norm_eps
         ),
         transformer_cfg=MaxxVitTransformerCfg(
             expand_first=False,
@@ -1364,7 +1366,8 @@ def _rw_max_cfg(
             norm_layer_cl=transformer_norm_layer_cl,
             rel_pos_type=rel_pos_type,
             rel_pos_dim=rel_pos_dim,
-            no_grid_attn=no_grid_attn
+            no_grid_attn=no_grid_attn,
+            norm_eps=norm_eps
         ),
     )
 
@@ -1645,7 +1648,7 @@ model_cfgs = dict(
         depths=(2, 2, 5, 2),
         block_type=('M',) * 4,
         stem_width=(32, 64),
-        **_rw_max_cfg(block_type='convnext'),
+        **_rw_max_cfg(block_type='convnext', norm_eps=1e-5),
     ),
     maxvit_tiny_rw_nogrid=MaxxVitCfg(
         embed_dim=(64, 128, 256, 512),
