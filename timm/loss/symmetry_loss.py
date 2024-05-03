@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.amp import autocast
+
+
 class SymmetryLoss(nn.Module):
 
     def __init__(self, cross_entropy_loss, symmetry_regularization='l2', alpha=1.0, symmetry_transformation=None):
@@ -43,13 +46,13 @@ class SymmetryLoss(nn.Module):
             if self.symmetry_transformation == 'augmentation_equivariance':
                 inv_augmentation_transform = target['inv_augmentation_transform']
 
-                symmetry_loss_mask1 = inv_augmentation_transform[0::2, :, :, 0] > -100
-                symmetry_loss_mask2 = inv_augmentation_transform[1::2, :, :, 0] > -100
+                symmetry_loss_mask1 = inv_augmentation_transform[0::2, :, :, 0] > -5
+                symmetry_loss_mask2 = inv_augmentation_transform[1::2, :, :, 0] > -5
 
                 symmetry_loss_mask = torch.logical_and(symmetry_loss_mask1, symmetry_loss_mask2)
 
-
-                auxiliary_output = F.grid_sample(auxiliary_output, inv_augmentation_transform, align_corners=True)
+                with autocast(device_type='cuda', enabled=False):
+                    auxiliary_output = F.grid_sample(auxiliary_output, inv_augmentation_transform, align_corners=True)
             else:
                 assert False, 'Unknown symmetry transformation {}'.format(self.symmetry_transformation)
 

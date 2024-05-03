@@ -73,9 +73,9 @@ class GridGenerator(object):
 
                 sampling_grid_cnt[target_y, target_x] += 1
 
-        # Set value -100 to empty cells
-        sampling_grid_x[sampling_grid_cnt == 0] = -100
-        sampling_grid_y[sampling_grid_cnt == 0] = -100
+        # Set value -5 to empty cells
+        sampling_grid_x[sampling_grid_cnt == 0] = -5
+        sampling_grid_y[sampling_grid_cnt == 0] = -5
 
         sampling_grid = torch.stack([sampling_grid_x, sampling_grid_y], dim=2)
 
