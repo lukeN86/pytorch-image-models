@@ -36,6 +36,8 @@ class SymmetryLoss(nn.Module):
 
         loss = self.cross_entropy_loss(model_output, labels)
 
+        assert not loss.isnan(), 'Invalid cross entropy loss'
+
         symmetry_loss_mask = None
         if self.symmetry_transformation is not None:
             if self.symmetry_transformation == 'augmentation_equivariance':
@@ -65,6 +67,8 @@ class SymmetryLoss(nn.Module):
             symmetry_loss = symmetry_loss[symmetry_loss_mask[:, None, :, :].repeat(1, symmetry_loss.size(1), 1, 1)].mean()
         else:
             symmetry_loss = symmetry_loss.mean()
+
+        assert not symmetry_loss.isnan(), 'Invalid symmetry loss'
 
         loss += self.alpha * symmetry_loss
 
