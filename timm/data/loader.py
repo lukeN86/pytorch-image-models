@@ -328,7 +328,7 @@ def create_loader(
         assert (batch_size % 2) == 0, "Batch size must be even for pair sampling."
         sampler = RandomPairsDistributedSampler(dataset)
         dataset.transform = convert_to_parametrized_transform(dataset.transform)
-        dataset.grid_generator = GridGenerator(grid_size=64)
+        dataset.grid_generator = GridGenerator(grid_size=9)
     elif distributed and not isinstance(dataset, torch.utils.data.IterableDataset):
         if is_training:
             if num_aug_repeats:
