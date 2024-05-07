@@ -46,8 +46,16 @@ def fast_collate(batch):
                 tensor[i + j * batch_size] += torch.from_numpy(batch[i][0][j])
         return tensor, targets
     elif isinstance(batch[0][0], np.ndarray):
-        targets = torch.tensor([b[1] for b in batch], dtype=torch.int64)
-        assert len(targets) == batch_size
+        if isinstance(batch[0][1], dict):
+            targets = {'labels': torch.tensor([b[1]['labels'] for b in batch], dtype=torch.int64)}
+            for key in batch[0][1].keys():
+                if key == 'labels':
+                    continue
+                targets[key] = torch.stack([b[1][key] for b in batch], dim=0)
+        else:
+            targets = torch.tensor([b[1] for b in batch], dtype=torch.int64)
+            assert len(targets) == batch_size
+
         tensor = torch.zeros((batch_size, *batch[0][0].shape), dtype=torch.uint8)
         for i in range(batch_size):
             tensor[i] += torch.from_numpy(batch[i][0])
@@ -320,7 +328,7 @@ def create_loader(
         assert (batch_size % 2) == 0, "Batch size must be even for pair sampling."
         sampler = RandomPairsDistributedSampler(dataset)
         dataset.transform = convert_to_parametrized_transform(dataset.transform)
-        dataset.grid_generator = GridGenerator(grid_size=9)
+        dataset.grid_generator = GridGenerator(grid_size=64)
     elif distributed and not isinstance(dataset, torch.utils.data.IterableDataset):
         if is_training:
             if num_aug_repeats:
