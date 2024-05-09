@@ -1366,8 +1366,7 @@ def _rw_max_cfg(
             norm_layer_cl=transformer_norm_layer_cl,
             rel_pos_type=rel_pos_type,
             rel_pos_dim=rel_pos_dim,
-            no_grid_attn=no_grid_attn,
-            norm_eps=norm_eps
+            no_grid_attn=no_grid_attn
         ),
     )
 
