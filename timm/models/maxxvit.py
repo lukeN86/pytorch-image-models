@@ -1647,7 +1647,7 @@ model_cfgs = dict(
         depths=(2, 2, 5, 2),
         block_type=('M',) * 4,
         stem_width=(32, 64),
-        **_rw_max_cfg(block_type='convnext'),
+        **_rw_max_cfg(block_type='convnext', norm_eps=1e-5),
     ),
     maxvit_tiny_rw_nogrid=MaxxVitCfg(
         embed_dim=(64, 128, 256, 512),
