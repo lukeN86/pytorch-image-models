@@ -51,8 +51,7 @@ class SymmetryLoss(nn.Module):
 
                 symmetry_loss_mask = torch.logical_and(symmetry_loss_mask1, symmetry_loss_mask2)
 
-                with autocast(device_type='cuda', enabled=False):
-                    auxiliary_output = F.grid_sample(auxiliary_output, inv_augmentation_transform, align_corners=True)
+                auxiliary_output = F.grid_sample(auxiliary_output, inv_augmentation_transform, align_corners=True)
             else:
                 assert False, 'Unknown symmetry transformation {}'.format(self.symmetry_transformation)
 
