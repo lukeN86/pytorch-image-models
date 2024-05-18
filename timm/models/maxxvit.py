@@ -1650,6 +1650,13 @@ model_cfgs = dict(
         stem_width=(32, 64),
         **_rw_max_cfg(block_type='convnext', norm_eps=1e-3),
     ),
+    maxvit_tiny_rw_convnext_nogrid=MaxxVitCfg(
+        embed_dim=(64, 128, 256, 512),
+        depths=(2, 2, 5, 2),
+        block_type=('M',) * 4,
+        stem_width=(32, 64),
+        **_rw_max_cfg(block_type='convnext', norm_eps=1e-3, no_grid_attn=True),
+    ),
     maxvit_tiny_rw_nogrid=MaxxVitCfg(
         embed_dim=(64, 128, 256, 512),
         depths=(2, 2, 5, 2),
@@ -1943,6 +1950,7 @@ default_cfgs = generate_default_cfgs({
         hf_hub_id='timm/',
         url='https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-weights-maxx/maxvit_tiny_rw_224_sw-7d0dffeb.pth'),
     'maxvit_tiny_rw_convnext_224.untrained': _cfg(url=''),
+    'maxvit_tiny_rw_convnextnogrid_224.untrained': _cfg(url=''),
     'maxvit_tiny_rw_256.untrained': _cfg(
         url='',
         input_size=(3, 256, 256), pool_size=(8, 8)),
@@ -2205,6 +2213,10 @@ def maxvit_tiny_rw_224(pretrained=False, **kwargs) -> MaxxVit:
 @register_model
 def maxvit_tiny_rw_convnext_224(pretrained=False, **kwargs) -> MaxxVit:
     return _create_maxxvit('maxvit_tiny_rw_convnext_224', pretrained=pretrained, **kwargs)
+
+@register_model
+def maxvit_tiny_rw_convnext_nogrid_224(pretrained=False, **kwargs) -> MaxxVit:
+    return _create_maxxvit('maxvit_tiny_rw_convnext_nogrid_224', pretrained=pretrained, **kwargs)
 
 @register_model
 def maxvit_tiny_rw_nogrid_224(pretrained=False, **kwargs):
