@@ -50,6 +50,8 @@ class SymmetryLoss(nn.Module):
                 symmetry_loss_mask2 = inv_augmentation_transform[1::2, :, :, 0] > -5
 
                 symmetry_loss_mask = torch.logical_and(symmetry_loss_mask1, symmetry_loss_mask2)
+                assert symmetry_loss_mask.sum() > 0
+                assert symmetry_loss_mask.sum() > 10
 
                 auxiliary_output = F.grid_sample(auxiliary_output, inv_augmentation_transform, align_corners=True)
             else:
