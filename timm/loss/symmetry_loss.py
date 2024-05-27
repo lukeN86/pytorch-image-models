@@ -50,6 +50,7 @@ class SymmetryLoss(nn.Module):
                 symmetry_loss_mask2 = inv_augmentation_transform[1::2, :, :, 0] > -5
 
                 symmetry_loss_mask = torch.logical_and(symmetry_loss_mask1, symmetry_loss_mask2)
+                symmetry_loss_mask = symmetry_loss_mask[:, None, :, :].repeat(1, auxiliary_output.size(1), 1, 1).float()
                 assert symmetry_loss_mask.sum() > 0
                 assert symmetry_loss_mask.sum() > 10
 
@@ -68,9 +69,9 @@ class SymmetryLoss(nn.Module):
         symmetry_loss = self.symmetry_regularization_loss(output1, output2)
 
         if symmetry_loss_mask is not None:
-            symmetry_loss = symmetry_loss[symmetry_loss_mask[:, None, :, :].repeat(1, symmetry_loss.size(1), 1, 1)].mean()
-        else:
-            symmetry_loss = symmetry_loss.mean()
+            symmetry_loss *= symmetry_loss_mask
+
+        symmetry_loss = symmetry_loss.mean()
 
         assert not symmetry_loss.isnan(), 'Invalid symmetry loss'
 
