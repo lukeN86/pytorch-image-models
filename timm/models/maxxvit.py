@@ -1089,6 +1089,7 @@ class Stem(nn.Module):
         self.out_chs = out_chs[-1]
         self.stride = 2
 
+        self.input = nn.Identity()  # Identity layer on input so that we can inject probe here if needed
         self.conv1 = create_conv2d(in_chs, out_chs[0], kernel_size, stride=2, padding=padding, bias=bias)
         self.norm1 = norm_act_layer(out_chs[0])
         self.conv2 = create_conv2d(out_chs[0], out_chs[1], kernel_size, stride=1, padding=padding, bias=bias)
@@ -1097,6 +1098,7 @@ class Stem(nn.Module):
         named_apply(partial(_init_conv, scheme=scheme), self)
 
     def forward(self, x):
+        x = self.input(x)
         x = self.conv1(x)
         x = self.norm1(x)
         x = self.conv2(x)

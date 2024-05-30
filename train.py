@@ -333,6 +333,12 @@ group.add_argument('--symmetry-regularization-alpha', type=float, default=1.0,
                    help='Symmetry regularization loss weight. Use with `--symmetry-loss`.')
 group.add_argument('--symmetry-transformation', type=str, default=None,
                    help='Symmetry transformation. Use with `--symmetry-loss`.')
+group.add_argument('--symmetry-transformation-grid-size', type=int, default=9,
+                   help='Symmetry regularization grid size. Use with `--symmetry-loss`.')
+group.add_argument('--symmetry-transformation-min-overlap', type=float, default=0.0,
+                   help='Symmetry regularization minimal overlap. Use with `--symmetry-loss`.')
+
+
 
 # Batch norm parameters (only works with gen_efficientnet based models currently)
 group = parser.add_argument_group('Batch norm parameters', 'Only works with gen_efficientnet based models currently.')
@@ -756,7 +762,8 @@ def main():
         use_prefetcher=args.prefetcher,
         use_multi_epochs_loader=args.use_multi_epochs_loader,
         worker_seeding=args.worker_seeding,
-        use_pair_sampling=args.use_pair_sampling
+        use_pair_sampling=args.use_pair_sampling,
+        symmetry_transformation_grid_size=args.symmetry_transformation_grid_size
     )
 
     loader_eval = None
@@ -851,7 +858,7 @@ def main():
         train_loss_fn = nn.CrossEntropyLoss()
 
     if args.symmetry_loss:
-        train_loss_fn = SymmetryLoss(train_loss_fn, args.symmetry_regularization, args.symmetry_regularization_alpha, args.symmetry_transformation)
+        train_loss_fn = SymmetryLoss(train_loss_fn, args.symmetry_regularization, args.symmetry_regularization_alpha, args.symmetry_transformation, args.symmetry_transformation_min_overlap)
 
     train_loss_fn = train_loss_fn.to(device=device)
     validate_loss_fn = nn.CrossEntropyLoss().to(device=device)

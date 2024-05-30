@@ -6,7 +6,7 @@ from torch.amp import autocast
 
 class SymmetryLoss(nn.Module):
 
-    def __init__(self, cross_entropy_loss, symmetry_regularization='l2', alpha=1.0, symmetry_transformation=None):
+    def __init__(self, cross_entropy_loss, symmetry_regularization='l2', alpha=1.0, symmetry_transformation=None, min_mask_overlap=0):
         super().__init__()
         self.cross_entropy_loss = cross_entropy_loss
 
@@ -20,6 +20,7 @@ class SymmetryLoss(nn.Module):
             assert False, 'Unknown symmetry regularization'
 
         self.alpha = alpha
+        self.min_mask_overlap = min_mask_overlap
         self.symmetry_transformation=symmetry_transformation
 
     def __call__(self, output, target):
@@ -50,9 +51,12 @@ class SymmetryLoss(nn.Module):
                 symmetry_loss_mask2 = inv_augmentation_transform[1::2, :, :, 0] > -5
 
                 symmetry_loss_mask = torch.logical_and(symmetry_loss_mask1, symmetry_loss_mask2)
+                mask_overlap = symmetry_loss_mask.sum(dim=-1).sum(dim=-1)
+                mask_overlap_th = symmetry_loss_mask.size(-1) * symmetry_loss_mask.size(-2) * self.min_mask_overlap
+                allowed_samples = mask_overlap > mask_overlap_th
+                symmetry_loss_mask[~allowed_samples, :, :] = False
                 symmetry_loss_mask = symmetry_loss_mask[:, None, :, :].repeat(1, auxiliary_output.size(1), 1, 1).float()
-                assert symmetry_loss_mask.sum() > 0
-                assert symmetry_loss_mask.sum() > 10
+
 
                 auxiliary_output = F.grid_sample(auxiliary_output, inv_augmentation_transform, align_corners=True)
             else:
