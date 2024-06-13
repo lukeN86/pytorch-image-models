@@ -30,6 +30,7 @@ import torch.nn as nn
 import torchvision.utils
 import yaml
 from torch.nn.parallel import DistributedDataParallel as NativeDDP
+import torch.autograd.profiler as profiler
 
 
 from timm import utils
@@ -412,6 +413,7 @@ group.add_argument('--find-unused-parameters', action='store_true', default=Fals
 group.add_argument('--use-pair-sampling', action='store_true', default=False, help='Always include the same image twice in the training set')
 group.add_argument('--eval-symmetries', default='', type=str, nargs='+', metavar='EVAL_METRIC', help='Name(s) of symmetries to evaluate')
 group.add_argument('--eval-symmetries-interval', default=5, type=int, metavar='EVAL_METRIC', help='How freqyently evaluate symmetries')
+group.add_argument('--enable-profiler', action='store_true', default=False, help='Enable model profiler')
 
 
 
@@ -1068,7 +1070,7 @@ def train_one_epoch(
         amp_autocast=suppress,
         loss_scaler=None,
         model_ema=None,
-        mixup_fn=None,
+        mixup_fn=None
 ):
     if args.mixup_off_epoch and epoch >= args.mixup_off_epoch:
         if args.prefetcher and loader.mixup_enabled:
@@ -1122,6 +1124,17 @@ def train_one_epoch(
                 loss /= accum_steps
             return loss
 
+        def _forward_with_profiler():
+            _ = model(input)    # Warm up
+            with profiler.profile(with_stack=True, profile_memory=True) as prof:
+                output = model(input)
+
+            print(prof.key_averages(group_by_stack_n=5).table(sort_by='self_cpu_time_total', row_limit=30))
+
+            loss = loss_fn(output, target)
+
+            return loss
+
         def _backward(_loss):
             if loss_scaler is not None:
                 loss_scaler(
@@ -1144,7 +1157,10 @@ def train_one_epoch(
                         )
                     optimizer.step()
 
-        if has_no_sync and not need_update:
+        if args.enable_profiler:
+            loss = _forward_with_profiler()
+            _backward(loss)
+        elif has_no_sync and not need_update:
             with model.no_sync():
                 loss = _forward()
                 _backward(loss)

@@ -674,6 +674,7 @@ class EfficientVit(nn.Module):
         global_pool='avg',
         head_widths=(),
         drop_rate=0.0,
+        drop_path_rate: float = 0.,
         num_classes=1000,
     ):
         super(EfficientVit, self).__init__()
@@ -759,11 +760,13 @@ class EfficientVit(nn.Module):
                 self.head = nn.Identity()
 
     def forward_features(self, x):
-        x = self.stem(x)
+        with profiler.record_function("stem"):
+            x = self.stem(x)
         if self.grad_checkpointing and not torch.jit.is_scripting():
             x = checkpoint_seq(self.stages, x)
         else:
-            x = self.stages(x)
+            with profiler.record_function("stages"):
+                x = self.stages(x)
         return x
 
     def forward_head(self, x, pre_logits: bool = False):
@@ -787,6 +790,7 @@ class EfficientVitLarge(nn.Module):
         global_pool='avg',
         head_widths=(),
         drop_rate=0.0,
+        drop_path_rate: float = 0.,
         num_classes=1000,
         norm_eps=1e-7,
     ):
